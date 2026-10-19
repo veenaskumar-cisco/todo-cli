@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.11.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.12.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -148,10 +148,11 @@ For Vim-style preview copying:
 2. Move by line with `j` / `k` or the arrow keys.
 3. Press `v` to begin visual line selection.
 4. Extend the selection with `j` / `k`, then press `y` to copy it.
-5. Press `Esc` to cancel a selection or `Ctrl+H` to return to the task list.
+5. Move onto any note line and press `e` to replace that note's text.
+6. Press `Esc` to cancel a selection or `Ctrl+H` to return to the task list.
 
 The active pane is highlighted. Pressing `y` without visual mode copies the
-current preview line.
+current preview line. Editing a note preserves its original timestamp.
 
 `todo ui` is the long form of `todo t`. The interface uses Python's standard
 `curses` module and reads and writes the same `todo.txt` file as every other

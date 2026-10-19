@@ -37,6 +37,13 @@ class TaskNote:
 
 
 @dataclass
+class PreviewLine:
+    text: str
+    style: str
+    note_index: int | None = None
+
+
+@dataclass
 class Task:
     task_id: int
     status: str
@@ -712,50 +719,51 @@ def tui_box(
         )
 
 
-def tui_preview_lines(task: Task | None, width: int) -> list[tuple[str, str]]:
+def tui_preview_lines(task: Task | None, width: int) -> list[PreviewLine]:
     """Build styled, selectable lines for the preview pane."""
     if task is None:
-        return [("No task selected", "muted")]
+        return [PreviewLine("No task selected", "muted")]
 
     completed = task.completed.isoformat() if task.completed else "-"
     lines = [
-        (f"{'ID':<10} {task.task_id}", "normal"),
-        (f"{'Status':<10} {task.status}", "normal"),
-        (f"{'Created':<10} {task.created.isoformat()}", "normal"),
-        (f"{'Completed':<10} {completed}", "normal"),
-        ("", "normal"),
-        ("Description", "accent"),
-        ("", "normal"),
+        PreviewLine(f"{'ID':<10} {task.task_id}", "normal"),
+        PreviewLine(f"{'Status':<10} {task.status}", "normal"),
+        PreviewLine(f"{'Created':<10} {task.created.isoformat()}", "normal"),
+        PreviewLine(f"{'Completed':<10} {completed}", "normal"),
+        PreviewLine("", "normal"),
+        PreviewLine("Description", "accent"),
+        PreviewLine("", "normal"),
     ]
     lines.extend(
-        (line, "normal")
+        PreviewLine(line, "normal")
         for line in textwrap.wrap(task.description, width=max(10, width))
     )
 
     if task.notes:
         lines.extend(
             [
-                ("", "normal"),
-                (f"Notes / Log ({len(task.notes)})", "accent"),
-                ("", "normal"),
+                PreviewLine("", "normal"),
+                PreviewLine(f"Notes / Log ({len(task.notes)})", "accent"),
+                PreviewLine("", "normal"),
             ]
         )
-    for note in reversed(task.notes):
+    for note_index in range(len(task.notes) - 1, -1, -1):
+        note = task.notes[note_index]
         timestamp = note.created.strftime("%Y-%m-%d %H:%M")
         lines.extend(
-            (line, "normal")
+            PreviewLine(line, "normal", note_index)
             for line in textwrap.wrap(
                 f"[{timestamp}] {note.text}", width=max(10, width)
             )
         )
-        lines.append(("", "normal"))
+        lines.append(PreviewLine("", "normal"))
     return lines
 
 
 def tui_preview(
     screen,
     curses_module,
-    lines: list[tuple[str, str]],
+    lines: list[PreviewLine],
     top: int,
     left: int,
     height: int,
@@ -778,11 +786,11 @@ def tui_preview(
         selection_start = min(cursor, visual_anchor)
         selection_end = max(cursor, visual_anchor)
 
-    for row_offset, (text, style) in enumerate(
+    for row_offset, preview_line in enumerate(
         lines[scroll_offset : scroll_offset + height]
     ):
         line_index = scroll_offset + row_offset
-        attributes = theme.get(style, theme["normal"])
+        attributes = theme.get(preview_line.style, theme["normal"])
         if focused and selection_start <= line_index <= selection_end:
             attributes = theme["selected"]
         tui_write(
@@ -790,7 +798,7 @@ def tui_preview(
             curses_module,
             top + row_offset,
             left,
-            text,
+            preview_line.text,
             left + width,
             attributes,
         )
@@ -1064,7 +1072,7 @@ def run_tui(screen, curses_module) -> int:
         )
         if focus == "preview":
             help_text = (
-                "PREVIEW  j/k move  v visual  y yank  Esc cancel  "
+                "PREVIEW  j/k move  e edit note  v visual  y yank  Esc cancel  "
                 "Ctrl+H tasks  q quit"
             )
         elif focus == "search":
@@ -1179,6 +1187,23 @@ def run_tui(screen, curses_module) -> int:
             elif key == "\x1b":
                 visual_anchor = None
                 message = "Visual selection cancelled"
+            elif key == "e":
+                preview_line = preview_lines[preview_cursor]
+                if preview_line.note_index is None or selected_task is None:
+                    message = "Move onto a note line before pressing e"
+                else:
+                    note = selected_task.notes[preview_line.note_index]
+                    replacement = tui_prompt(
+                        screen,
+                        curses_module,
+                        "Replace note text (blank cancels): ",
+                    )
+                    if replacement:
+                        note.text = replacement
+                        save_todos(data)
+                        message = "Note updated"
+                    else:
+                        message = "Note edit cancelled"
             elif key == "y":
                 start = preview_cursor
                 end = preview_cursor
@@ -1186,7 +1211,7 @@ def run_tui(screen, curses_module) -> int:
                     start = min(preview_cursor, visual_anchor)
                     end = max(preview_cursor, visual_anchor)
                 copy_text = "\n".join(
-                    line for line, _style in preview_lines[start : end + 1]
+                    line.text for line in preview_lines[start : end + 1]
                 ).strip("\n")
                 if copy_text:
                     method = copy_to_clipboard(copy_text)
