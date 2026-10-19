@@ -61,7 +61,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.4.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.5.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -102,6 +102,7 @@ Short commands are available:
 todo a "Run BGP sanity test"  # add
 todo a                        # interactive add
 todo ls                       # list
+todo u 1                      # reopen completed task 1
 todo x 1                      # delete task 1
 todo e                        # edit todo.txt
 todo t                        # full-screen terminal UI
@@ -122,6 +123,7 @@ details. It starts with today's tasks and supports:
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
 - `d`: mark the selected task complete
+- `u`: reopen the selected completed task
 - `x`: delete the selected task after confirmation
 - `e`: edit the selected task's description
 - `/`: fuzzy-search the current view; submit a blank search to clear it
@@ -171,6 +173,13 @@ Complete a task using its ID:
 
 ```console
 todo done 1
+```
+
+Reopen a completed task and clear its completion date:
+
+```console
+todo undo 1
+todo u 1
 ```
 
 Delete a task after an interactive confirmation:

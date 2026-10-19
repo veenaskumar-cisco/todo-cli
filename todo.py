@@ -319,6 +319,24 @@ def command_done(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_undo(args: argparse.Namespace) -> int:
+    """Reopen a completed task."""
+    data = load_todos()
+    task = find_task(data, args.task_id)
+    if task is None:
+        print(f"Error: task ID {args.task_id} does not exist.", file=sys.stderr)
+        return 1
+    if task.status == "pending":
+        print(f"Task {task.task_id} is already pending.", file=sys.stderr)
+        return 1
+
+    task.status = "pending"
+    task.completed = None
+    save_todos(data)
+    print(f"Reopened task {task.task_id}.")
+    return 0
+
+
 def command_delete(args: argparse.Namespace) -> int:
     data = load_todos()
     task = find_task(data, args.task_id)
@@ -823,7 +841,7 @@ def run_tui(screen, curses_module) -> int:
             theme["accent"],
         )
         help_text = (
-            "j/k move  a add  d done  x delete  e edit  / search  "
+            "j/k move  a add  d done  u undo  x delete  e edit  / search  "
             "t today  p pending  A all  q quit"
         )
         tui_write(
@@ -868,6 +886,15 @@ def run_tui(screen, curses_module) -> int:
                 task.completed = date.today()
                 save_todos(data)
                 message = f"Completed task {task.task_id}"
+        elif key == "u" and tasks:
+            task = tasks[selected]
+            if task.status == "pending":
+                message = f"Task {task.task_id} is already pending"
+            else:
+                task.status = "pending"
+                task.completed = None
+                save_todos(data)
+                message = f"Reopened task {task.task_id}"
         elif key == "x" and tasks:
             task = tasks[selected]
             answer = tui_prompt(
@@ -972,6 +999,12 @@ def build_parser() -> argparse.ArgumentParser:
     done_parser = subparsers.add_parser("done", help="mark a task completed")
     done_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
     done_parser.set_defaults(handler=command_done)
+
+    undo_parser = subparsers.add_parser(
+        "undo", aliases=["u"], help="reopen a completed task"
+    )
+    undo_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
+    undo_parser.set_defaults(handler=command_undo)
 
     delete_parser = subparsers.add_parser(
         "delete", aliases=["x"], help="delete a task"

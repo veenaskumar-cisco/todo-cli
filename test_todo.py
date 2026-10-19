@@ -117,6 +117,9 @@ class TodoCliTests(unittest.TestCase):
                 return None
 
         class FakeScreen:
+            def __init__(self) -> None:
+                self.keys = iter(["u", "q"])
+
             def getmaxyx(self) -> tuple[int, int]:
                 return (24, 100)
 
@@ -140,13 +143,19 @@ class TodoCliTests(unittest.TestCase):
                 return None
 
             def get_wch(self) -> str:
-                return "q"
+                return next(self.keys)
 
-        task = todo.Task(1, "pending", date.today(), None, "Test task")
+        task = todo.Task(1, "done", date.today(), date.today(), "Test task")
         data = todo.TodoData(next_id=2, tasks=[task])
-        with mock.patch.object(todo, "load_todos", return_value=data):
+        with (
+            mock.patch.object(todo, "load_todos", return_value=data),
+            mock.patch.object(todo, "save_todos") as save_todos,
+        ):
             result = todo.run_tui(FakeScreen(), FakeCurses())
         self.assertEqual(result, 0)
+        self.assertEqual(task.status, "pending")
+        self.assertIsNone(task.completed)
+        save_todos.assert_called_once_with(data)
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()
@@ -170,6 +179,18 @@ class TodoCliTests(unittest.TestCase):
 
         all_tasks = self.run_todo("list", "--all")
         self.assertIn("1      done", all_tasks.stdout)
+
+        reopened = self.run_todo("u", "1")
+        self.assertEqual(reopened.returncode, 0)
+        self.assertIn("Reopened task 1", reopened.stdout)
+
+        pending_again = self.run_todo("list", "--pending")
+        self.assertIn("1      pending", pending_again.stdout)
+        self.assertIn("-            Run BGP transit sanity", pending_again.stdout)
+
+        already_pending = self.run_todo("undo", "1")
+        self.assertEqual(already_pending.returncode, 1)
+        self.assertIn("already pending", already_pending.stderr)
 
     def test_ids_are_not_reused_after_delete(self) -> None:
         self.run_todo("add", "First")
