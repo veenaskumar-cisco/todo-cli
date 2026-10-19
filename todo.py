@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -781,6 +783,51 @@ def tui_preview(
         row += 1
 
 
+def notes_for_copy(task: Task, latest_only: bool) -> str:
+    """Format one or all task notes for the clipboard."""
+    notes = task.notes[-1:] if latest_only else task.notes
+    return "\n".join(
+        f"[{note.created.strftime('%Y-%m-%d %H:%M:%S')}] {note.text}"
+        for note in notes
+    )
+
+
+def copy_to_clipboard(text: str) -> str:
+    """Copy text using a platform tool or an OSC 52 terminal sequence."""
+    clipboard_commands = [
+        (["wl-copy"], "wl-copy"),
+        (["xclip", "-selection", "clipboard"], "xclip"),
+        (["xsel", "--clipboard", "--input"], "xsel"),
+        (["pbcopy"], "pbcopy"),
+        (["clip.exe"], "clip.exe"),
+    ]
+    for command, name in clipboard_commands:
+        if shutil.which(command[0]) is None:
+            continue
+        try:
+            result = subprocess.run(
+                command,
+                input=text,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0:
+            return name
+
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    sequence = f"\033]52;c;{encoded}\a"
+    if os.environ.get("TMUX"):
+        escaped = sequence.replace(chr(27), chr(27) * 2)
+        sequence = f"\033Ptmux;{escaped}\033\\"
+    sys.stdout.write(sequence)
+    sys.stdout.flush()
+    return "terminal OSC 52"
+
+
 def run_tui(screen, curses_module) -> int:
     """Run the full-screen keyboard interface."""
     data = load_todos()
@@ -967,8 +1014,8 @@ def run_tui(screen, curses_module) -> int:
             theme["accent"],
         )
         help_text = (
-            "j/k move  a add  n note  d done  u undo  x delete  e edit  / search  "
-            "t today  p pending  A all  q quit"
+            "j/k move  a add  n note  y copy  d done  u undo  x delete  "
+            "e edit  / search  t today  p pending  A all  q quit"
         )
         tui_write(
             screen,
@@ -1030,6 +1077,32 @@ def run_tui(screen, curses_module) -> int:
                 message = f"Added note to task {task.task_id}"
             else:
                 message = "Note cancelled"
+        elif key in {"c", "y"} and tasks:
+            task = tasks[selected]
+            choice = tui_prompt(
+                screen,
+                curses_module,
+                "Copy [d]escription, latest [n]ote, or [a]ll notes? ",
+            ).casefold()
+            copy_text = ""
+            copied_item = ""
+            if choice in {"d", "description"}:
+                copy_text = task.description
+                copied_item = "description"
+            elif choice in {"n", "note"}:
+                copy_text = notes_for_copy(task, latest_only=True)
+                copied_item = "latest note"
+            elif choice in {"a", "all"}:
+                copy_text = notes_for_copy(task, latest_only=False)
+                copied_item = "all notes"
+
+            if copy_text:
+                method = copy_to_clipboard(copy_text)
+                message = f"Copied {copied_item} using {method}"
+            elif choice in {"n", "note", "a", "all"}:
+                message = "This task has no notes to copy"
+            else:
+                message = "Copy cancelled"
         elif key == "x" and tasks:
             task = tasks[selected]
             answer = tui_prompt(

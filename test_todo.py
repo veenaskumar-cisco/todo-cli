@@ -122,6 +122,9 @@ class TodoCliTests(unittest.TestCase):
         data = todo.load_todos(todo_file)
         self.assertEqual(len(data.tasks[0].notes), 2)
         self.assertEqual(data.tasks[0].notes[1].text, "BGP session recovered")
+        copied_notes = todo.notes_for_copy(data.tasks[0], latest_only=False)
+        self.assertIn("Checked ifav210 logs", copied_notes)
+        self.assertIn("BGP session recovered", copied_notes)
 
     def test_tui_fuzzy_search(self) -> None:
         self.assertTrue(todo.fuzzy_match("bgpst", "Run BGP sanity test"))
@@ -151,7 +154,8 @@ class TodoCliTests(unittest.TestCase):
 
         class FakeScreen:
             def __init__(self) -> None:
-                self.keys = iter(["u", "n", "q"])
+                self.keys = iter(["u", "n", "y", "q"])
+                self.responses = iter([b"Follow-up note", b"n"])
 
             def getmaxyx(self) -> tuple[int, int]:
                 return (24, 100)
@@ -182,7 +186,7 @@ class TodoCliTests(unittest.TestCase):
                 return None
 
             def getstr(self, _row: int, _column: int, _length: int) -> bytes:
-                return b"Follow-up note"
+                return next(self.responses)
 
             def get_wch(self) -> str:
                 return next(self.keys)
@@ -192,6 +196,9 @@ class TodoCliTests(unittest.TestCase):
         with (
             mock.patch.object(todo, "load_todos", return_value=data),
             mock.patch.object(todo, "save_todos") as save_todos,
+            mock.patch.object(
+                todo, "copy_to_clipboard", return_value="test clipboard"
+            ) as copy_to_clipboard,
         ):
             result = todo.run_tui(FakeScreen(), FakeCurses())
         self.assertEqual(result, 0)
@@ -199,6 +206,8 @@ class TodoCliTests(unittest.TestCase):
         self.assertIsNone(task.completed)
         self.assertEqual(task.notes[0].text, "Follow-up note")
         self.assertEqual(save_todos.call_count, 2)
+        copied_text = copy_to_clipboard.call_args.args[0]
+        self.assertTrue(copied_text.endswith("Follow-up note"))
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()

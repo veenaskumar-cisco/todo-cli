@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.6.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.7.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -126,6 +126,7 @@ It starts with today's tasks and supports:
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
 - `n`: add a timestamped note/log to the selected task
+- `y` or `c`: copy the description, latest note, or all notes
 - `d`: mark the selected task complete
 - `u`: reopen the selected completed task
 - `x`: delete the selected task after confirmation
@@ -139,6 +140,10 @@ It starts with today's tasks and supports:
 `todo ui` is the long form of `todo t`. The interface uses Python's standard
 `curses` module and reads and writes the same `todo.txt` file as every other
 command.
+
+Copy uses `wl-copy`, `xclip`, or `xsel` when one is available on Linux.
+Otherwise it falls back to the terminal-standard OSC 52 clipboard sequence.
+macOS `pbcopy`, WSL `clip.exe`, and tmux passthrough are also supported.
 
 Add tasks. The program supplies today's local date:
 

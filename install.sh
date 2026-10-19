@@ -2,11 +2,11 @@
 
 set -eu
 
-VERSION="${TODO_CLI_VERSION:-v1.6.0}"
+VERSION="${TODO_CLI_VERSION:-v1.7.0}"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/todo-cli"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 DOWNLOAD_URL="https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/${VERSION}/todo.py"
-EXPECTED_SHA256="0fded33ccd562ed42a1872423edd4df100b4f412aef5003b2f6726ed9d549849"
+EXPECTED_SHA256="a5daec400eafde2eeaa5ce85c6ca8275becb4f8f8241321aed9ca5a0563fbec7"
 
 if ! command -v python3 >/dev/null 2>&1; then
     echo "Error: Python 3 is required but was not found." >&2
@@ -23,7 +23,7 @@ temporary_file="$(mktemp)"
 trap 'rm -f "$temporary_file"' EXIT HUP INT TERM
 
 echo "Downloading Daily Todo CLI ${VERSION}..."
-curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+curl --proto '=https' --tlsv1.3 --fail --silent --show-error --location \
     "$DOWNLOAD_URL" --output "$temporary_file"
 
 actual_sha256="$(
