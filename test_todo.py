@@ -178,6 +178,17 @@ class TodoCliTests(unittest.TestCase):
                         "j",
                         "j",
                         "e",
+                        "!",
+                        "\x1a",
+                        " ",
+                        "u",
+                        "p",
+                        "d",
+                        "a",
+                        "t",
+                        "e",
+                        "d",
+                        "\n",
                         "\x08",
                         " ",
                         "j",
@@ -187,7 +198,7 @@ class TodoCliTests(unittest.TestCase):
                     ]
                 )
                 self.responses = iter(
-                    [b"Follow-up note", b"n", b"Edited follow-up note", b"yes"]
+                    [b"Follow-up note", b"n", b"yes"]
                 )
 
             def getmaxyx(self) -> tuple[int, int]:
@@ -238,7 +249,7 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(task.status, "in-progress")
         self.assertIsNone(task.completed)
-        self.assertEqual(task.notes[0].text, "Edited follow-up note")
+        self.assertEqual(task.notes[0].text, "Follow-up note updated")
         self.assertEqual(save_todos.call_count, 5)
         self.assertEqual(data.tasks, [])
         self.assertEqual(copy_to_clipboard.call_count, 2)

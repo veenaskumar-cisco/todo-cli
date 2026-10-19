@@ -622,6 +622,101 @@ def tui_prompt(screen, curses_module, label: str) -> str:
             pass
 
 
+def tui_edit_text(
+    screen, curses_module, label: str, initial_text: str
+) -> str | None:
+    """Edit prefilled text with cursor movement and session-local undo."""
+    text = initial_text
+    cursor = len(text)
+    horizontal_offset = 0
+    undo_stack: list[tuple[str, int]] = []
+
+    curses_module.noecho()
+    try:
+        curses_module.curs_set(1)
+    except curses_module.error:
+        pass
+
+    try:
+        while True:
+            height, width = screen.getmaxyx()
+            row = max(0, height - 1)
+            screen.move(row, 0)
+            screen.clrtoeol()
+            tui_write(screen, curses_module, row, 0, label, width)
+
+            start = min(len(label), max(0, width - 2))
+            available = max(1, width - start - 1)
+            if cursor < horizontal_offset:
+                horizontal_offset = cursor
+            elif cursor > horizontal_offset + available:
+                horizontal_offset = cursor - available
+
+            visible_text = text[
+                horizontal_offset : horizontal_offset + available
+            ]
+            tui_write(
+                screen,
+                curses_module,
+                row,
+                start,
+                visible_text,
+                width,
+            )
+            screen.move(row, min(width - 1, start + cursor - horizontal_offset))
+            screen.refresh()
+
+            try:
+                key = screen.get_wch()
+            except curses_module.error:
+                continue
+
+            if key in {"\n", "\r", getattr(curses_module, "KEY_ENTER", -1)}:
+                return text.strip()
+            if key == "\x1b":
+                return None
+            if key == "\x1a":
+                if undo_stack:
+                    text, cursor = undo_stack.pop()
+                continue
+            if key in {
+                "\x08",
+                "\x7f",
+                getattr(curses_module, "KEY_BACKSPACE", -1),
+            }:
+                if cursor > 0:
+                    undo_stack.append((text, cursor))
+                    text = text[: cursor - 1] + text[cursor:]
+                    cursor -= 1
+                continue
+            if key == getattr(curses_module, "KEY_DC", -1):
+                if cursor < len(text):
+                    undo_stack.append((text, cursor))
+                    text = text[:cursor] + text[cursor + 1 :]
+                continue
+            if key == getattr(curses_module, "KEY_LEFT", -1):
+                cursor = max(0, cursor - 1)
+                continue
+            if key == getattr(curses_module, "KEY_RIGHT", -1):
+                cursor = min(len(text), cursor + 1)
+                continue
+            if key == getattr(curses_module, "KEY_HOME", -1) or key == "\x01":
+                cursor = 0
+                continue
+            if key == getattr(curses_module, "KEY_END", -1) or key == "\x05":
+                cursor = len(text)
+                continue
+            if isinstance(key, str) and key.isprintable():
+                undo_stack.append((text, cursor))
+                text = text[:cursor] + key + text[cursor:]
+                cursor += len(key)
+    finally:
+        try:
+            curses_module.curs_set(0)
+        except curses_module.error:
+            pass
+
+
 def tui_theme(curses_module) -> dict[str, int]:
     """Create a dark Telescope-inspired color palette when colors are available."""
     theme = {
@@ -1193,17 +1288,22 @@ def run_tui(screen, curses_module) -> int:
                     message = "Move onto a note line before pressing e"
                 else:
                     note = selected_task.notes[preview_line.note_index]
-                    replacement = tui_prompt(
+                    replacement = tui_edit_text(
                         screen,
                         curses_module,
-                        "Replace note text (blank cancels): ",
+                        "Edit note [Ctrl+Z undo]: ",
+                        note.text,
                     )
-                    if replacement:
+                    if replacement is None:
+                        message = "Note edit cancelled"
+                    elif not replacement:
+                        message = "Note cannot be empty"
+                    elif replacement != note.text:
                         note.text = replacement
                         save_todos(data)
                         message = "Note updated"
                     else:
-                        message = "Note edit cancelled"
+                        message = "Note unchanged"
             elif key == "y":
                 start = preview_cursor
                 end = preview_cursor
