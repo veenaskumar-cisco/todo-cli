@@ -60,6 +60,36 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("usage: todo", result.stdout)
 
+    def test_short_command_aliases(self) -> None:
+        added = self.run_todo("a", "Alias task")
+        self.assertEqual(added.returncode, 0)
+        self.assertIn("Added task 1", added.stdout)
+
+        listed = self.run_todo("ls")
+        self.assertEqual(listed.returncode, 0)
+        self.assertIn("Alias task", listed.stdout)
+
+        deleted = self.run_todo("x", "1", input_text="y\n")
+        self.assertEqual(deleted.returncode, 0)
+        self.assertIn("Deleted task 1", deleted.stdout)
+
+        fake_editor = self.project / "fake_editor.py"
+        fake_editor.write_text("", encoding="utf-8")
+        environment = {
+            **os.environ,
+            "EDITOR": f"{sys.executable} {fake_editor}",
+        }
+        edited = self.run_todo("e", environment=environment)
+        self.assertEqual(edited.returncode, 0)
+
+    def test_add_alias_without_description_starts_prompt(self) -> None:
+        result = self.run_todo("a", input_text="Prompted task\n\n")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("1st todo:", result.stdout)
+
+        listed = self.run_todo("ls")
+        self.assertIn("Prompted task", listed.stdout)
+
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()
 

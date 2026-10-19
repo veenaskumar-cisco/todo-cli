@@ -61,7 +61,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.1.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.2.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -94,6 +94,16 @@ Enter one task at a time. Press Enter on an empty line to finish.
 2nd todo: Check remote-leaf SSH login issue
 3rd todo:
 Added tasks 1, 2 (created 2026-10-19).
+```
+
+Short commands are available:
+
+```console
+todo a "Run BGP sanity test"  # add
+todo a                        # interactive add
+todo ls                       # list
+todo x 1                      # delete task 1
+todo e                        # edit todo.txt
 ```
 
 Add tasks. The program supplies today's local date:

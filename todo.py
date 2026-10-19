@@ -249,6 +249,9 @@ def command_interactive() -> int:
 
 
 def command_add(args: argparse.Namespace) -> int:
+    if args.description is None:
+        return command_interactive()
+
     description = args.description.strip()
     if not description:
         print("Error: task description cannot be empty.", file=sys.stderr)
@@ -387,11 +390,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    add_parser = subparsers.add_parser("add", help="add a new task")
-    add_parser.add_argument("description", help="task description")
+    add_parser = subparsers.add_parser(
+        "add", aliases=["a"], help="add a new task"
+    )
+    add_parser.add_argument("description", nargs="?", help="task description")
     add_parser.set_defaults(handler=command_add)
 
-    list_parser = subparsers.add_parser("list", help="list tasks")
+    list_parser = subparsers.add_parser(
+        "list", aliases=["ls"], help="list tasks"
+    )
     list_filter = list_parser.add_mutually_exclusive_group()
     list_filter.add_argument(
         "--pending", action="store_true", help="show today's pending tasks"
@@ -408,11 +415,15 @@ def build_parser() -> argparse.ArgumentParser:
     done_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
     done_parser.set_defaults(handler=command_done)
 
-    delete_parser = subparsers.add_parser("delete", help="delete a task")
+    delete_parser = subparsers.add_parser(
+        "delete", aliases=["x"], help="delete a task"
+    )
     delete_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
     delete_parser.set_defaults(handler=command_delete)
 
-    edit_parser = subparsers.add_parser("edit", help="open todo.txt in an editor")
+    edit_parser = subparsers.add_parser(
+        "edit", aliases=["e"], help="open todo.txt in an editor"
+    )
     edit_parser.set_defaults(handler=command_edit)
     return parser
 
