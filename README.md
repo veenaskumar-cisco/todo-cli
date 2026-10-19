@@ -61,7 +61,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.2.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.3.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -104,7 +104,33 @@ todo a                        # interactive add
 todo ls                       # list
 todo x 1                      # delete task 1
 todo e                        # edit todo.txt
+todo t                        # full-screen terminal UI
 ```
+
+### Full-screen terminal UI
+
+On Linux or macOS, run:
+
+```console
+todo t
+```
+
+The interface starts with today's tasks and supports:
+
+- `j` / `k` or arrow keys: move between tasks
+- `a`: add a task
+- `d`: mark the selected task complete
+- `x`: delete the selected task after confirmation
+- `e`: edit the selected task's description
+- `/`: fuzzy-search the current view; submit a blank search to clear it
+- `t`: show today's tasks
+- `p`: show today's pending tasks
+- `A`: show all tasks
+- `q`: quit
+
+`todo ui` is the long form of `todo t`. The interface uses Python's standard
+`curses` module and reads and writes the same `todo.txt` file as every other
+command.
 
 Add tasks. The program supplies today's local date:
 

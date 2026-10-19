@@ -383,6 +383,288 @@ def command_edit(_args: argparse.Namespace) -> int:
     return 0
 
 
+def fuzzy_match(query: str, text: str) -> bool:
+    """Return True when query characters appear in text in the same order."""
+    remaining = iter(text.casefold())
+    return all(character in remaining for character in query.casefold())
+
+
+def tui_visible_tasks(data: TodoData, view: str, query: str) -> list[Task]:
+    """Select tasks for a TUI view and optional fuzzy search."""
+    if view == "all":
+        tasks = list(data.tasks)
+    else:
+        tasks = [task for task in data.tasks if task.created == date.today()]
+        if view == "pending":
+            tasks = [task for task in tasks if task.status == "pending"]
+
+    if query:
+        tasks = [
+            task
+            for task in tasks
+            if fuzzy_match(
+                query,
+                f"{task.task_id} {task.status} {task.created} {task.description}",
+            )
+        ]
+    return tasks
+
+
+def tui_write(screen, curses_module, row: int, column: int, text: str, width: int, attributes: int = 0) -> None:
+    """Write clipped text without crashing at the terminal's bottom-right edge."""
+    if row < 0 or column < 0 or width <= column:
+        return
+    try:
+        screen.addnstr(row, column, text, max(0, width - column - 1), attributes)
+    except curses_module.error:
+        pass
+
+
+def tui_prompt(screen, curses_module, label: str) -> str:
+    """Read one line from the TUI's bottom row."""
+    height, width = screen.getmaxyx()
+    row = max(0, height - 1)
+    screen.move(row, 0)
+    screen.clrtoeol()
+    tui_write(screen, curses_module, row, 0, label, width)
+    screen.refresh()
+
+    try:
+        curses_module.echo()
+        curses_module.curs_set(1)
+    except curses_module.error:
+        pass
+
+    try:
+        start = min(len(label), max(0, width - 2))
+        raw_value = screen.getstr(row, start, max(1, width - start - 1))
+        return raw_value.decode("utf-8", errors="replace").strip()
+    finally:
+        curses_module.noecho()
+        try:
+            curses_module.curs_set(0)
+        except curses_module.error:
+            pass
+
+
+def run_tui(screen, curses_module) -> int:
+    """Run the full-screen keyboard interface."""
+    data = load_todos()
+    view = "today"
+    query = ""
+    selected = 0
+    scroll_offset = 0
+    message = "Ready"
+
+    try:
+        curses_module.curs_set(0)
+    except curses_module.error:
+        pass
+    screen.keypad(True)
+
+    while True:
+        tasks = tui_visible_tasks(data, view, query)
+        if tasks:
+            selected = min(selected, len(tasks) - 1)
+        else:
+            selected = 0
+
+        height, width = screen.getmaxyx()
+        screen.erase()
+
+        if height < 7 or width < 32:
+            tui_write(
+                screen,
+                curses_module,
+                0,
+                0,
+                "Terminal too small. Resize or press q.",
+                width,
+                curses_module.A_BOLD,
+            )
+            screen.refresh()
+            key = screen.get_wch()
+            if key in {"q", "Q"}:
+                return 0
+            continue
+
+        view_name = {
+            "today": f"TODAY - {date.today().isoformat()}",
+            "pending": f"PENDING - {date.today().isoformat()}",
+            "all": "ALL TASKS",
+        }[view]
+        title = f"TODO  {view_name}"
+        if query:
+            title += f"  / {query}"
+        tui_write(
+            screen,
+            curses_module,
+            0,
+            0,
+            title,
+            width,
+            curses_module.A_BOLD,
+        )
+        tui_write(screen, curses_module, 1, 0, "-" * (width - 1), width)
+
+        list_height = height - 5
+        if selected < scroll_offset:
+            scroll_offset = selected
+        elif selected >= scroll_offset + list_height:
+            scroll_offset = selected - list_height + 1
+
+        if not tasks:
+            empty_text = "No matching tasks. Press a to add one."
+            tui_write(screen, curses_module, 2, 0, empty_text, width)
+        else:
+            for row_offset, task in enumerate(
+                tasks[scroll_offset : scroll_offset + list_height]
+            ):
+                task_index = scroll_offset + row_offset
+                marker = ">" if task_index == selected else " "
+                checkbox = "[x]" if task.status == "done" else "[ ]"
+                line = (
+                    f"{marker} {checkbox} {task.task_id:<5} "
+                    f"{task.description}  ({task.created.isoformat()})"
+                )
+                attributes = (
+                    curses_module.A_REVERSE
+                    if task_index == selected
+                    else curses_module.A_NORMAL
+                )
+                tui_write(
+                    screen,
+                    curses_module,
+                    2 + row_offset,
+                    0,
+                    line,
+                    width,
+                    attributes,
+                )
+
+        status = message
+        if query:
+            status += f" | search: {query}"
+        tui_write(screen, curses_module, height - 2, 0, status, width)
+        help_text = (
+            "j/k move  a add  d done  x delete  e edit  / search  "
+            "t today  p pending  A all  q quit"
+        )
+        tui_write(
+            screen,
+            curses_module,
+            height - 1,
+            0,
+            help_text,
+            width,
+            curses_module.A_BOLD,
+        )
+        screen.refresh()
+
+        try:
+            key = screen.get_wch()
+        except curses_module.error:
+            continue
+
+        if key in {"q", "Q"}:
+            return 0
+        if key in {curses_module.KEY_DOWN, "j"}:
+            if tasks:
+                selected = min(selected + 1, len(tasks) - 1)
+        elif key in {curses_module.KEY_UP, "k"}:
+            selected = max(selected - 1, 0)
+        elif key == "a":
+            description = tui_prompt(screen, curses_module, "New todo: ")
+            if description:
+                task = Task(data.next_id, "pending", date.today(), None, description)
+                data.tasks.append(task)
+                data.next_id += 1
+                save_todos(data)
+                message = f"Added task {task.task_id}"
+            else:
+                message = "Add cancelled"
+        elif key == "d" and tasks:
+            task = tasks[selected]
+            if task.status == "done":
+                message = f"Task {task.task_id} is already done"
+            else:
+                task.status = "done"
+                task.completed = date.today()
+                save_todos(data)
+                message = f"Completed task {task.task_id}"
+        elif key == "x" and tasks:
+            task = tasks[selected]
+            answer = tui_prompt(
+                screen, curses_module, f"Delete task {task.task_id}? [y/N] "
+            )
+            if answer.casefold() in {"y", "yes"}:
+                data.tasks.remove(task)
+                save_todos(data)
+                message = f"Deleted task {task.task_id}"
+            else:
+                message = "Delete cancelled"
+        elif key == "e" and tasks:
+            task = tasks[selected]
+            description = tui_prompt(
+                screen,
+                curses_module,
+                f"New description for {task.task_id} (blank cancels): ",
+            )
+            if description:
+                task.description = description
+                save_todos(data)
+                message = f"Edited task {task.task_id}"
+            else:
+                message = "Edit cancelled"
+        elif key == "/":
+            query = tui_prompt(
+                screen, curses_module, "Search (blank clears): "
+            )
+            selected = 0
+            scroll_offset = 0
+            message = "Search updated"
+        elif key == "t":
+            view = "today"
+            selected = 0
+            scroll_offset = 0
+            message = "Showing today's tasks"
+        elif key == "p":
+            view = "pending"
+            selected = 0
+            scroll_offset = 0
+            message = "Showing today's pending tasks"
+        elif key == "A":
+            view = "all"
+            selected = 0
+            scroll_offset = 0
+            message = "Showing all tasks"
+
+
+def command_tui(_args: argparse.Namespace) -> int:
+    """Open the Linux full-screen todo interface."""
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        print("Error: todo ui requires an interactive terminal.", file=sys.stderr)
+        return 1
+
+    try:
+        import curses
+    except ImportError:
+        print(
+            "Error: this Python installation does not include curses. "
+            "The full-screen interface is supported on Linux and macOS.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        return curses.wrapper(lambda screen: run_tui(screen, curses))
+    except KeyboardInterrupt:
+        return 130
+    except curses.error as exc:
+        print(f"Error: could not start the terminal interface: {exc}", file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="todo",
@@ -425,6 +707,11 @@ def build_parser() -> argparse.ArgumentParser:
         "edit", aliases=["e"], help="open todo.txt in an editor"
     )
     edit_parser.set_defaults(handler=command_edit)
+
+    tui_parser = subparsers.add_parser(
+        "ui", aliases=["t"], help="open the full-screen terminal interface"
+    )
+    tui_parser.set_defaults(handler=command_tui)
     return parser
 
 

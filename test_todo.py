@@ -10,6 +10,9 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest import mock
+
+import todo
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -89,6 +92,61 @@ class TodoCliTests(unittest.TestCase):
 
         listed = self.run_todo("ls")
         self.assertIn("Prompted task", listed.stdout)
+
+    def test_tui_requires_an_interactive_terminal(self) -> None:
+        result = self.run_todo("t")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires an interactive terminal", result.stderr)
+
+    def test_tui_fuzzy_search(self) -> None:
+        self.assertTrue(todo.fuzzy_match("bgpst", "Run BGP sanity test"))
+        self.assertTrue(todo.fuzzy_match("ssh", "Check remote-leaf SSH login"))
+        self.assertFalse(todo.fuzzy_match("status", "Study Linux basics"))
+
+    def test_tui_renders_and_quits(self) -> None:
+        class FakeCurses:
+            A_BOLD = 1
+            A_REVERSE = 2
+            A_NORMAL = 0
+            KEY_DOWN = 258
+            KEY_UP = 259
+            error = RuntimeError
+
+            @staticmethod
+            def curs_set(_visibility: int) -> None:
+                return None
+
+        class FakeScreen:
+            def getmaxyx(self) -> tuple[int, int]:
+                return (24, 100)
+
+            def keypad(self, _enabled: bool) -> None:
+                return None
+
+            def erase(self) -> None:
+                return None
+
+            def addnstr(
+                self,
+                _row: int,
+                _column: int,
+                _text: str,
+                _length: int,
+                _attributes: int = 0,
+            ) -> None:
+                return None
+
+            def refresh(self) -> None:
+                return None
+
+            def get_wch(self) -> str:
+                return "q"
+
+        task = todo.Task(1, "pending", date.today(), None, "Test task")
+        data = todo.TodoData(next_id=2, tasks=[task])
+        with mock.patch.object(todo, "load_todos", return_value=data):
+            result = todo.run_tui(FakeScreen(), FakeCurses())
+        self.assertEqual(result, 0)
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()
