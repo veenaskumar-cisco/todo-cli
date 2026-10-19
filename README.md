@@ -8,6 +8,7 @@ Vim-friendly `todo.txt` file. It uses only the Python standard library.
 ```text
 todo-cli/
 ├── todo.py       # The Python program
+├── install.sh    # One-command Linux installer
 ├── todo.bat      # Windows command launcher
 ├── todo          # macOS/Linux command launcher
 ├── test_todo.py  # Automated tests
@@ -57,18 +58,27 @@ todo add "Run BGP transit sanity on ifav210"
 Add `C:\Users\veesenth\todo-cli` to the Windows user `Path` environment
 variable to make that command permanent.
 
-### macOS or Linux
+### Linux: install the `todo` command
 
 ```sh
-chmod +x todo
-./todo add "Run BGP transit sanity on ifav210"
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.0.0/install.sh | sh
 ```
 
-Optionally copy or link the `todo` launcher into a directory already on
-`PATH`, such as `~/.local/bin`.
+The installer uses no `sudo`. It installs the command at
+`~/.local/bin/todo` and the program at
+`~/.local/share/todo-cli/todo.py`. If `~/.local/bin` is not already on
+`PATH`, the installer prints the one line to add to your shell configuration.
 
-The data file is always `todo.txt` beside `todo.py`, so changing the terminal's
-working directory does not create separate task lists.
+Then use it like a normal command:
+
+```sh
+todo add "Run BGP transit sanity on ifav210"
+todo list
+```
+
+The installed data file is
+`~/.local/share/todo-cli/todo.txt`. Changing the terminal's working directory
+does not create separate task lists.
 
 ## Commands
 
