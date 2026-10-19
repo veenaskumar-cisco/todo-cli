@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.9.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.10.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -133,10 +133,11 @@ It starts with today's tasks and supports:
 - `x`: delete marked tasks together, or the current task when none are marked
 - `Esc`: clear all marked tasks
 - `e`: edit the selected task's description
-- `/`: fuzzy-search the current view; submit a blank search to clear it
+- `/`: enter live fuzzy search; typing filters immediately
+- `Backspace`: edit the live search; `Enter` accepts it; `Esc` clears it
 - `t`: show today's tasks
 - `p`: show today's pending tasks
-- `A`: show all tasks
+- `A`: leave search, clear its query, and show all tasks
 - `q`: quit
 
 For Vim-style preview copying:

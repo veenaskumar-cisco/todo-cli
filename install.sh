@@ -2,11 +2,11 @@
 
 set -eu
 
-VERSION="${TODO_CLI_VERSION:-v1.9.0}"
+VERSION="${TODO_CLI_VERSION:-v1.10.0}"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/todo-cli"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 DOWNLOAD_URL="https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/${VERSION}/todo.py"
-EXPECTED_SHA256="e14f558b63fec3ea2379c27e19dfad2e537254bbbc80fb86fca7dab4a7106376"
+EXPECTED_SHA256="cb3885e680a10428bb83e0a627bf1437031ac40d1de8978da687f306370c027b"
 
 if ! command -v python3 >/dev/null 2>&1; then
     echo "Error: Python 3 is required but was not found." >&2

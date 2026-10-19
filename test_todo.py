@@ -156,6 +156,9 @@ class TodoCliTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.keys = iter(
                     [
+                        "/",
+                        "z",
+                        "A",
                         "u",
                         "n",
                         "y",

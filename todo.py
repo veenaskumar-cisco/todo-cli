@@ -919,8 +919,8 @@ def run_tui(screen, curses_module) -> int:
             0,
             search_height,
             left_width,
-            "SEARCH",
-            theme["border"],
+            "SEARCH" + (" [FOCUS]" if focus == "search" else ""),
+            theme["accent"] if focus == "search" else theme["border"],
         )
         tui_box(
             screen,
@@ -979,7 +979,10 @@ def run_tui(screen, curses_module) -> int:
                     attributes,
                 )
 
-        search_text = f"> {query}" if query else "> press / to fuzzy search"
+        if focus == "search":
+            search_text = f"> {query}_"
+        else:
+            search_text = f"> {query}" if query else "> press / to fuzzy search"
         tui_write(
             screen,
             curses_module,
@@ -987,7 +990,7 @@ def run_tui(screen, curses_module) -> int:
             2,
             search_text,
             left_width - 1,
-            theme["accent"] if query else theme["muted"],
+            theme["accent"] if query or focus == "search" else theme["muted"],
         )
 
         preview_lines = tui_preview_lines(selected_task, right_width - 4)
@@ -1036,6 +1039,11 @@ def run_tui(screen, curses_module) -> int:
                 "PREVIEW  j/k move  v visual  y yank  Esc cancel  "
                 "Ctrl+H tasks  q quit"
             )
+        elif focus == "search":
+            help_text = (
+                "SEARCH  type to filter  Backspace edit  Enter accept  "
+                "A all  t today  p pending  Esc clear"
+            )
         else:
             help_text = (
                 "TASKS  j/k move  Space select  x delete  Esc clear  "
@@ -1057,8 +1065,61 @@ def run_tui(screen, curses_module) -> int:
         except curses_module.error:
             continue
 
+        if focus == "search":
+            if key == "A":
+                view = "all"
+                query = ""
+                focus = "tasks"
+                selected = 0
+                scroll_offset = 0
+                message = "Showing all tasks"
+            elif key == "t":
+                view = "today"
+                query = ""
+                focus = "tasks"
+                selected = 0
+                scroll_offset = 0
+                message = "Showing today's tasks"
+            elif key == "p":
+                view = "pending"
+                query = ""
+                focus = "tasks"
+                selected = 0
+                scroll_offset = 0
+                message = "Showing today's pending tasks"
+            elif key in {"\n", "\r", getattr(curses_module, "KEY_ENTER", -1)}:
+                focus = "tasks"
+                message = "Search accepted"
+            elif key == "\x1b":
+                query = ""
+                focus = "tasks"
+                selected = 0
+                scroll_offset = 0
+                message = "Search cleared"
+            elif key in {
+                "\x08",
+                "\x7f",
+                getattr(curses_module, "KEY_BACKSPACE", -1),
+            }:
+                query = query[:-1]
+                selected = 0
+                scroll_offset = 0
+                message = "Search updated"
+            elif key in {curses_module.KEY_DOWN}:
+                if tasks:
+                    selected = min(selected + 1, len(tasks) - 1)
+            elif key in {curses_module.KEY_UP}:
+                selected = max(selected - 1, 0)
+            elif isinstance(key, str) and key.isprintable():
+                query += key
+                selected = 0
+                scroll_offset = 0
+                message = "Search updated"
+            continue
+
         if key in {"q", "Q"}:
             return 0
+
         if key == "\x0c":
             if selected_task is None:
                 message = "No task available for preview"
@@ -1230,24 +1291,23 @@ def run_tui(screen, curses_module) -> int:
             else:
                 message = "Edit cancelled"
         elif key == "/":
-            query = tui_prompt(
-                screen, curses_module, "Search (blank clears): "
-            )
-            selected = 0
-            scroll_offset = 0
-            message = "Search updated"
+            focus = "search"
+            message = "Search focused; type to filter"
         elif key == "t":
             view = "today"
+            query = ""
             selected = 0
             scroll_offset = 0
             message = "Showing today's tasks"
         elif key == "p":
             view = "pending"
+            query = ""
             selected = 0
             scroll_offset = 0
             message = "Showing today's pending tasks"
         elif key == "A":
             view = "all"
+            query = ""
             selected = 0
             scroll_offset = 0
             message = "Showing all tasks"
