@@ -154,7 +154,20 @@ class TodoCliTests(unittest.TestCase):
 
         class FakeScreen:
             def __init__(self) -> None:
-                self.keys = iter(["u", "n", "y", "q"])
+                self.keys = iter(
+                    [
+                        "u",
+                        "n",
+                        "y",
+                        "\x0c",
+                        "j",
+                        "v",
+                        "j",
+                        "y",
+                        "\x08",
+                        "q",
+                    ]
+                )
                 self.responses = iter([b"Follow-up note", b"n"])
 
             def getmaxyx(self) -> tuple[int, int]:
@@ -206,8 +219,12 @@ class TodoCliTests(unittest.TestCase):
         self.assertIsNone(task.completed)
         self.assertEqual(task.notes[0].text, "Follow-up note")
         self.assertEqual(save_todos.call_count, 2)
-        copied_text = copy_to_clipboard.call_args.args[0]
-        self.assertTrue(copied_text.endswith("Follow-up note"))
+        self.assertEqual(copy_to_clipboard.call_count, 2)
+        copied_note = copy_to_clipboard.call_args_list[0].args[0]
+        self.assertTrue(copied_note.endswith("Follow-up note"))
+        visual_copy = copy_to_clipboard.call_args_list[1].args[0]
+        self.assertIn("Status", visual_copy)
+        self.assertIn("Created", visual_copy)
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()

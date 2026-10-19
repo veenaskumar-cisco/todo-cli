@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.7.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.8.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -126,7 +126,7 @@ It starts with today's tasks and supports:
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
 - `n`: add a timestamped note/log to the selected task
-- `y` or `c`: copy the description, latest note, or all notes
+- `y` or `c`: copy the description, latest note, or all notes from the task list
 - `d`: mark the selected task complete
 - `u`: reopen the selected completed task
 - `x`: delete the selected task after confirmation
@@ -136,6 +136,17 @@ It starts with today's tasks and supports:
 - `p`: show today's pending tasks
 - `A`: show all tasks
 - `q`: quit
+
+For Vim-style preview copying:
+
+1. Press `Ctrl+L` to focus the preview pane.
+2. Move by line with `j` / `k` or the arrow keys.
+3. Press `v` to begin visual line selection.
+4. Extend the selection with `j` / `k`, then press `y` to copy it.
+5. Press `Esc` to cancel a selection or `Ctrl+H` to return to the task list.
+
+The active pane is highlighted. Pressing `y` without visual mode copies the
+current preview line.
 
 `todo ui` is the long form of `todo t`. The interface uses Python's standard
 `curses` module and reads and writes the same `todo.txt` file as every other

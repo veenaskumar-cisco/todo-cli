@@ -670,117 +670,89 @@ def tui_box(
         )
 
 
+def tui_preview_lines(task: Task | None, width: int) -> list[tuple[str, str]]:
+    """Build styled, selectable lines for the preview pane."""
+    if task is None:
+        return [("No task selected", "muted")]
+
+    completed = task.completed.isoformat() if task.completed else "-"
+    lines = [
+        (f"{'ID':<10} {task.task_id}", "normal"),
+        (f"{'Status':<10} {task.status}", "normal"),
+        (f"{'Created':<10} {task.created.isoformat()}", "normal"),
+        (f"{'Completed':<10} {completed}", "normal"),
+        ("", "normal"),
+        ("Description", "accent"),
+        ("", "normal"),
+    ]
+    lines.extend(
+        (line, "normal")
+        for line in textwrap.wrap(task.description, width=max(10, width))
+    )
+
+    if task.notes:
+        lines.extend(
+            [
+                ("", "normal"),
+                (f"Notes / Log ({len(task.notes)})", "accent"),
+                ("", "normal"),
+            ]
+        )
+    for note in reversed(task.notes):
+        timestamp = note.created.strftime("%Y-%m-%d %H:%M")
+        lines.extend(
+            (line, "normal")
+            for line in textwrap.wrap(
+                f"[{timestamp}] {note.text}", width=max(10, width)
+            )
+        )
+        lines.append(("", "normal"))
+    return lines
+
+
 def tui_preview(
     screen,
     curses_module,
-    task: Task | None,
+    lines: list[tuple[str, str]],
     top: int,
     left: int,
     height: int,
     width: int,
     theme: dict[str, int],
-) -> None:
-    """Render details for the selected task."""
-    if task is None:
-        tui_write(
-            screen,
-            curses_module,
-            top,
-            left,
-            "No task selected",
-            left + width,
-            theme["muted"],
-        )
-        return
+    focused: bool,
+    cursor: int,
+    visual_anchor: int | None,
+    scroll_offset: int,
+) -> int:
+    """Render selectable preview lines and return the updated scroll offset."""
+    if cursor < scroll_offset:
+        scroll_offset = cursor
+    elif cursor >= scroll_offset + height:
+        scroll_offset = cursor - height + 1
 
-    completed = task.completed.isoformat() if task.completed else "-"
-    details = [
-        ("ID", str(task.task_id)),
-        ("Status", task.status),
-        ("Created", task.created.isoformat()),
-        ("Completed", completed),
-    ]
-    row = top
-    for label, value in details:
-        tui_write(
-            screen,
-            curses_module,
-            row,
-            left,
-            f"{label:<10}",
-            left + width,
-            theme["accent"],
-        )
-        tui_write(
-            screen,
-            curses_module,
-            row,
-            left + 11,
-            value,
-            left + width,
-            theme["normal"],
-        )
-        row += 1
+    selection_start = cursor
+    selection_end = cursor
+    if visual_anchor is not None:
+        selection_start = min(cursor, visual_anchor)
+        selection_end = max(cursor, visual_anchor)
 
-    row += 1
-    tui_write(
-        screen,
-        curses_module,
-        row,
-        left,
-        "Description",
-        left + width,
-        theme["accent"],
-    )
-    row += 2
-    for line in textwrap.wrap(task.description, width=max(10, width - 1)):
-        if row >= top + height:
-            break
+    for row_offset, (text, style) in enumerate(
+        lines[scroll_offset : scroll_offset + height]
+    ):
+        line_index = scroll_offset + row_offset
+        attributes = theme.get(style, theme["normal"])
+        if focused and selection_start <= line_index <= selection_end:
+            attributes = theme["selected"]
         tui_write(
             screen,
             curses_module,
-            row,
+            top + row_offset,
             left,
-            line,
+            text,
             left + width,
-            theme["normal"],
+            attributes,
         )
-        row += 1
-
-    if task.notes and row < top + height - 1:
-        row += 1
-        tui_write(
-            screen,
-            curses_module,
-            row,
-            left,
-            f"Notes / Log ({len(task.notes)})",
-            left + width,
-            theme["accent"],
-        )
-        row += 1
-
-    for note in reversed(task.notes):
-        if row >= top + height:
-            break
-        timestamp = note.created.strftime("%Y-%m-%d %H:%M")
-        note_lines = textwrap.wrap(
-            f"[{timestamp}] {note.text}", width=max(10, width - 1)
-        )
-        for line in note_lines:
-            if row >= top + height:
-                break
-            tui_write(
-                screen,
-                curses_module,
-                row,
-                left,
-                line,
-                left + width,
-                theme["normal"],
-            )
-            row += 1
-        row += 1
+    return scroll_offset
 
 
 def notes_for_copy(task: Task, latest_only: bool) -> str:
@@ -836,6 +808,11 @@ def run_tui(screen, curses_module) -> int:
     selected = 0
     scroll_offset = 0
     message = "Ready"
+    focus = "tasks"
+    preview_cursor = 0
+    preview_scroll = 0
+    preview_task_id: int | None = None
+    visual_anchor: int | None = None
 
     try:
         curses_module.curs_set(0)
@@ -850,6 +827,13 @@ def run_tui(screen, curses_module) -> int:
             selected = min(selected, len(tasks) - 1)
         else:
             selected = 0
+        selected_task = tasks[selected] if tasks else None
+        current_task_id = selected_task.task_id if selected_task else None
+        if current_task_id != preview_task_id:
+            preview_task_id = current_task_id
+            preview_cursor = 0
+            preview_scroll = 0
+            visual_anchor = None
 
         height, width = screen.getmaxyx()
         screen.erase()
@@ -902,8 +886,9 @@ def run_tui(screen, curses_module) -> int:
             0,
             results_height,
             left_width,
-            f"{view_name} RESULTS {len(tasks)}",
-            theme["border"],
+            f"{view_name} RESULTS {len(tasks)}"
+            + (" [FOCUS]" if focus == "tasks" else ""),
+            theme["accent"] if focus == "tasks" else theme["border"],
         )
         tui_box(
             screen,
@@ -922,8 +907,8 @@ def run_tui(screen, curses_module) -> int:
             right_left,
             pane_height,
             right_width,
-            "TASK PREVIEW",
-            theme["border"],
+            "TASK PREVIEW" + (" [FOCUS]" if focus == "preview" else ""),
+            theme["accent"] if focus == "preview" else theme["border"],
         )
 
         list_height = max(1, results_height - 2)
@@ -979,16 +964,21 @@ def run_tui(screen, curses_module) -> int:
             theme["accent"] if query else theme["muted"],
         )
 
-        selected_task = tasks[selected] if tasks else None
-        tui_preview(
+        preview_lines = tui_preview_lines(selected_task, right_width - 4)
+        preview_cursor = min(preview_cursor, max(0, len(preview_lines) - 1))
+        preview_scroll = tui_preview(
             screen,
             curses_module,
-            selected_task,
+            preview_lines,
             pane_top + 2,
             right_left + 2,
             pane_height - 4,
             right_width - 4,
             theme,
+            focus == "preview",
+            preview_cursor,
+            visual_anchor,
+            preview_scroll,
         )
 
         date_text = date.today().isoformat()
@@ -1013,10 +1003,16 @@ def run_tui(screen, curses_module) -> int:
             width,
             theme["accent"],
         )
-        help_text = (
-            "j/k move  a add  n note  y copy  d done  u undo  x delete  "
-            "e edit  / search  t today  p pending  A all  q quit"
-        )
+        if focus == "preview":
+            help_text = (
+                "PREVIEW  j/k move  v visual  y yank  Esc cancel  "
+                "Ctrl+H tasks  q quit"
+            )
+        else:
+            help_text = (
+                "TASKS  j/k move  Ctrl+L preview  a add  n note  y copy  "
+                "d done  u undo  x delete  e edit  / search  q quit"
+            )
         tui_write(
             screen,
             curses_module,
@@ -1035,6 +1031,54 @@ def run_tui(screen, curses_module) -> int:
 
         if key in {"q", "Q"}:
             return 0
+        if key == "\x0c":
+            if selected_task is None:
+                message = "No task available for preview"
+            else:
+                focus = "preview"
+                visual_anchor = None
+                message = "Preview focused"
+            continue
+
+        if focus == "preview":
+            if key in {"\x08", getattr(curses_module, "KEY_BACKSPACE", -1)}:
+                focus = "tasks"
+                visual_anchor = None
+                message = "Task list focused"
+            elif key in {curses_module.KEY_DOWN, "j"}:
+                preview_cursor = min(
+                    preview_cursor + 1, max(0, len(preview_lines) - 1)
+                )
+            elif key in {curses_module.KEY_UP, "k"}:
+                preview_cursor = max(preview_cursor - 1, 0)
+            elif key == "v":
+                if visual_anchor is None:
+                    visual_anchor = preview_cursor
+                    message = "Visual selection started"
+                else:
+                    visual_anchor = None
+                    message = "Visual selection cancelled"
+            elif key == "\x1b":
+                visual_anchor = None
+                message = "Visual selection cancelled"
+            elif key == "y":
+                start = preview_cursor
+                end = preview_cursor
+                if visual_anchor is not None:
+                    start = min(preview_cursor, visual_anchor)
+                    end = max(preview_cursor, visual_anchor)
+                copy_text = "\n".join(
+                    line for line, _style in preview_lines[start : end + 1]
+                ).strip("\n")
+                if copy_text:
+                    method = copy_to_clipboard(copy_text)
+                    line_count = end - start + 1
+                    message = f"Yanked {line_count} line(s) using {method}"
+                else:
+                    message = "Selected line is empty"
+                visual_anchor = None
+            continue
+
         if key in {curses_module.KEY_DOWN, "j"}:
             if tasks:
                 selected = min(selected + 1, len(tasks) - 1)
