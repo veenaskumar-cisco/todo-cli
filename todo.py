@@ -200,6 +200,54 @@ def find_task(data: TodoData, task_id: int) -> Task | None:
     return next((task for task in data.tasks if task.task_id == task_id), None)
 
 
+def ordinal(number: int) -> str:
+    """Return a number with its English ordinal suffix."""
+    if 10 <= number % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    return f"{number}{suffix}"
+
+
+def command_interactive() -> int:
+    """Prompt for today's tasks until the user enters a blank line."""
+    data = load_todos()
+    today = date.today()
+    new_tasks: list[Task] = []
+
+    print(f"Today's todos ({today.isoformat()})")
+    print("Enter one task at a time. Press Enter on an empty line to finish.")
+
+    try:
+        while True:
+            description = input(f"{ordinal(len(new_tasks) + 1)} todo: ").strip()
+            if not description:
+                break
+            if "\0" in description:
+                print("Error: a task cannot contain a null character.", file=sys.stderr)
+                continue
+
+            task = Task(data.next_id, "pending", today, None, description)
+            data.tasks.append(task)
+            new_tasks.append(task)
+            data.next_id += 1
+    except EOFError:
+        print()
+    except KeyboardInterrupt:
+        print("\nCancelled. No tasks were added.")
+        return 130
+
+    if not new_tasks:
+        print("No tasks added.")
+        return 0
+
+    save_todos(data)
+    task_ids = ", ".join(str(task.task_id) for task in new_tasks)
+    noun = "task" if len(new_tasks) == 1 else "tasks"
+    print(f"Added {noun} {task_ids} (created {today.isoformat()}).")
+    return 0
+
+
 def command_add(args: argparse.Namespace) -> int:
     description = args.description.strip()
     if not description:
@@ -372,11 +420,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if not args.command:
-        parser.print_help()
-        return 0
 
     try:
+        if not args.command:
+            return command_interactive()
         return args.handler(args)
     except TodoFileError as exc:
         print(f"Error: {exc}", file=sys.stderr)

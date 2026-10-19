@@ -61,7 +61,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.0.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.1.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -72,7 +72,7 @@ The installer uses no `sudo`. It installs the command at
 Then use it like a normal command:
 
 ```sh
-todo add "Run BGP transit sanity on ifav210"
+todo
 todo list
 ```
 
@@ -81,6 +81,20 @@ The installed data file is
 does not create separate task lists.
 
 ## Commands
+
+Run `todo` by itself for a quick interactive prompt. Enter one task at a time;
+press Enter on an empty prompt to save and finish. Every entered task
+automatically receives today's local date:
+
+```console
+$ todo
+Today's todos (2026-10-19)
+Enter one task at a time. Press Enter on an empty line to finish.
+1st todo: Run BGP transit sanity on ifav210
+2nd todo: Check remote-leaf SSH login issue
+3rd todo:
+Added tasks 1, 2 (created 2026-10-19).
+```
 
 Add tasks. The program supplies today's local date:
 
@@ -142,7 +156,6 @@ $env:EDITOR = "vim"
 Show help:
 
 ```console
-todo
 todo --help
 ```
 

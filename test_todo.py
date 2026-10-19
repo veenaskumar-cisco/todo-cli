@@ -40,12 +40,25 @@ class TodoCliTests(unittest.TestCase):
             env=environment,
         )
 
-    def test_no_command_shows_help(self) -> None:
-        result = self.run_todo()
+    def test_no_command_prompts_for_todays_tasks(self) -> None:
+        today = date.today().isoformat()
+        result = self.run_todo(
+            input_text="Run BGP sanity test\nCheck SSH login\n\n"
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(f"Today's todos ({today})", result.stdout)
+        self.assertIn("1st todo:", result.stdout)
+        self.assertIn("2nd todo:", result.stdout)
+        self.assertIn(f"Added tasks 1, 2 (created {today})", result.stdout)
+
+        listed = self.run_todo("list")
+        self.assertIn("Run BGP sanity test", listed.stdout)
+        self.assertIn("Check SSH login", listed.stdout)
+
+    def test_help_flag_still_shows_help(self) -> None:
+        result = self.run_todo("--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("usage: todo", result.stdout)
-        self.assertIn("add", result.stdout)
-        self.assertIn("list", result.stdout)
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()
