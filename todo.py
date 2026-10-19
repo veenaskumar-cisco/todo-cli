@@ -449,24 +449,44 @@ def command_note(args: argparse.Namespace) -> int:
 
 def command_delete(args: argparse.Namespace) -> int:
     data = load_todos()
-    task = find_task(data, args.task_id)
-    if task is None:
-        print(f"Error: task ID {args.task_id} does not exist.", file=sys.stderr)
+    task_ids = list(dict.fromkeys(args.task_ids))
+    tasks_by_id = {task.task_id: task for task in data.tasks}
+    missing_ids = [task_id for task_id in task_ids if task_id not in tasks_by_id]
+    if missing_ids:
+        missing_text = ", ".join(str(task_id) for task_id in missing_ids)
+        noun = "ID" if len(missing_ids) == 1 else "IDs"
+        verb = "does" if len(missing_ids) == 1 else "do"
+        print(
+            f"Error: task {noun} {missing_text} {verb} not exist.",
+            file=sys.stderr,
+        )
         return 1
+    tasks = [tasks_by_id[task_id] for task_id in task_ids]
 
     try:
-        answer = input(
-            f'Delete task {task.task_id} "{task.description}"? [y/N] '
-        ).strip().lower()
+        if len(tasks) == 1:
+            task = tasks[0]
+            prompt = f'Delete task {task.task_id} "{task.description}"? [y/N] '
+        else:
+            selected_ids = ", ".join(str(task.task_id) for task in tasks)
+            prompt = f"Delete {len(tasks)} tasks ({selected_ids})? [y/N] "
+        answer = input(prompt).strip().lower()
     except EOFError:
         answer = ""
     if answer not in {"y", "yes"}:
         print("Delete cancelled.")
         return 0
 
-    data.tasks.remove(task)
+    selected_id_set = set(task_ids)
+    data.tasks = [
+        task for task in data.tasks if task.task_id not in selected_id_set
+    ]
     save_todos(data)
-    print(f"Deleted task {task.task_id}.")
+    if len(tasks) == 1:
+        print(f"Deleted task {tasks[0].task_id}.")
+    else:
+        deleted_ids = ", ".join(str(task.task_id) for task in tasks)
+        print(f"Deleted tasks {deleted_ids}.")
     return 0
 
 
@@ -813,6 +833,7 @@ def run_tui(screen, curses_module) -> int:
     preview_scroll = 0
     preview_task_id: int | None = None
     visual_anchor: int | None = None
+    marked_ids: set[int] = set()
 
     try:
         curses_module.curs_set(0)
@@ -887,6 +908,7 @@ def run_tui(screen, curses_module) -> int:
             results_height,
             left_width,
             f"{view_name} RESULTS {len(tasks)}"
+            + (f" ({len(marked_ids)} MARKED)" if marked_ids else "")
             + (" [FOCUS]" if focus == "tasks" else ""),
             theme["accent"] if focus == "tasks" else theme["border"],
         )
@@ -934,8 +956,12 @@ def run_tui(screen, curses_module) -> int:
             ):
                 task_index = scroll_offset + row_offset
                 marker = ">" if task_index == selected else " "
+                marked = "*" if task.task_id in marked_ids else " "
                 checkbox = "[x]" if task.status == "done" else "[ ]"
-                line = f"{marker} {checkbox} {task.task_id:<4} {task.description}"
+                line = (
+                    f"{marker}{marked} {checkbox} "
+                    f"{task.task_id:<4} {task.description}"
+                )
                 attributes = (
                     theme["selected"]
                     if task_index == selected
@@ -983,6 +1009,8 @@ def run_tui(screen, curses_module) -> int:
 
         date_text = date.today().isoformat()
         status = message
+        if marked_ids:
+            status += f" | {len(marked_ids)} task(s) marked"
         if query:
             status += f" | search: {query}"
         tui_write(
@@ -1010,8 +1038,8 @@ def run_tui(screen, curses_module) -> int:
             )
         else:
             help_text = (
-                "TASKS  j/k move  Ctrl+L preview  a add  n note  y copy  "
-                "d done  u undo  x delete  e edit  / search  q quit"
+                "TASKS  j/k move  Space select  x delete  Esc clear  "
+                "Ctrl+L preview  a add  n note  d done  u undo  / search  q quit"
             )
         tui_write(
             screen,
@@ -1079,7 +1107,19 @@ def run_tui(screen, curses_module) -> int:
                 visual_anchor = None
             continue
 
-        if key in {curses_module.KEY_DOWN, "j"}:
+        if key == " " and tasks:
+            task_id = tasks[selected].task_id
+            if task_id in marked_ids:
+                marked_ids.remove(task_id)
+                message = f"Unmarked task {task_id}"
+            else:
+                marked_ids.add(task_id)
+                message = f"Marked task {task_id}"
+        elif key == "\x1b":
+            if marked_ids:
+                marked_ids.clear()
+                message = "Cleared marked tasks"
+        elif key in {curses_module.KEY_DOWN, "j"}:
             if tasks:
                 selected = min(selected + 1, len(tasks) - 1)
         elif key in {curses_module.KEY_UP, "k"}:
@@ -1147,15 +1187,33 @@ def run_tui(screen, curses_module) -> int:
                 message = "This task has no notes to copy"
             else:
                 message = "Copy cancelled"
-        elif key == "x" and tasks:
-            task = tasks[selected]
-            answer = tui_prompt(
-                screen, curses_module, f"Delete task {task.task_id}? [y/N] "
-            )
+        elif key == "x" and (tasks or marked_ids):
+            if marked_ids:
+                delete_ids = sorted(marked_ids)
+                answer = tui_prompt(
+                    screen,
+                    curses_module,
+                    f"Delete {len(delete_ids)} marked tasks? [y/N] ",
+                )
+            else:
+                task = tasks[selected]
+                delete_ids = [task.task_id]
+                answer = tui_prompt(
+                    screen, curses_module, f"Delete task {task.task_id}? [y/N] "
+                )
             if answer.casefold() in {"y", "yes"}:
-                data.tasks.remove(task)
+                delete_id_set = set(delete_ids)
+                data.tasks = [
+                    task
+                    for task in data.tasks
+                    if task.task_id not in delete_id_set
+                ]
                 save_todos(data)
-                message = f"Deleted task {task.task_id}"
+                marked_ids.difference_update(delete_id_set)
+                if len(delete_ids) == 1:
+                    message = f"Deleted task {delete_ids[0]}"
+                else:
+                    message = f"Deleted {len(delete_ids)} tasks"
             else:
                 message = "Delete cancelled"
         elif key == "e" and tasks:
@@ -1266,9 +1324,11 @@ def build_parser() -> argparse.ArgumentParser:
     note_parser.set_defaults(handler=command_note)
 
     delete_parser = subparsers.add_parser(
-        "delete", aliases=["x"], help="delete a task"
+        "delete", aliases=["x"], help="delete one or more tasks"
     )
-    delete_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
+    delete_parser.add_argument(
+        "task_ids", nargs="+", type=parse_task_id, metavar="TASK-ID"
+    )
     delete_parser.set_defaults(handler=command_delete)
 
     edit_parser = subparsers.add_parser(

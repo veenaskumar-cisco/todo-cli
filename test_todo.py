@@ -165,10 +165,14 @@ class TodoCliTests(unittest.TestCase):
                         "j",
                         "y",
                         "\x08",
+                        " ",
+                        "j",
+                        " ",
+                        "x",
                         "q",
                     ]
                 )
-                self.responses = iter([b"Follow-up note", b"n"])
+                self.responses = iter([b"Follow-up note", b"n", b"yes"])
 
             def getmaxyx(self) -> tuple[int, int]:
                 return (24, 100)
@@ -205,7 +209,8 @@ class TodoCliTests(unittest.TestCase):
                 return next(self.keys)
 
         task = todo.Task(1, "done", date.today(), date.today(), "Test task")
-        data = todo.TodoData(next_id=2, tasks=[task])
+        second_task = todo.Task(2, "pending", date.today(), None, "Second task")
+        data = todo.TodoData(next_id=3, tasks=[task, second_task])
         with (
             mock.patch.object(todo, "load_todos", return_value=data),
             mock.patch.object(todo, "save_todos") as save_todos,
@@ -218,7 +223,8 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(task.status, "pending")
         self.assertIsNone(task.completed)
         self.assertEqual(task.notes[0].text, "Follow-up note")
-        self.assertEqual(save_todos.call_count, 2)
+        self.assertEqual(save_todos.call_count, 3)
+        self.assertEqual(data.tasks, [])
         self.assertEqual(copy_to_clipboard.call_count, 2)
         copied_note = copy_to_clipboard.call_args_list[0].args[0]
         self.assertTrue(copied_note.endswith("Follow-up note"))
@@ -268,6 +274,26 @@ class TodoCliTests(unittest.TestCase):
 
         added = self.run_todo("add", "Second")
         self.assertIn("Added task 2", added.stdout)
+
+    def test_bulk_delete_is_atomic(self) -> None:
+        self.run_todo("a", "First")
+        self.run_todo("a", "Second")
+        self.run_todo("a", "Third")
+
+        missing = self.run_todo("x", "1", "99", input_text="yes\n")
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn("task ID 99 does not exist", missing.stderr)
+        before_delete = self.run_todo("ls")
+        self.assertIn("First", before_delete.stdout)
+
+        deleted = self.run_todo("delete", "1", "3", input_text="yes\n")
+        self.assertEqual(deleted.returncode, 0)
+        self.assertIn("Deleted tasks 1, 3", deleted.stdout)
+
+        remaining = self.run_todo("list", "--all")
+        self.assertNotIn("First", remaining.stdout)
+        self.assertIn("Second", remaining.stdout)
+        self.assertNotIn("Third", remaining.stdout)
 
     def test_invalid_inputs_are_clear(self) -> None:
         invalid_date = self.run_todo("list", "--date", "2026-02-30")

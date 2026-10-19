@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.8.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.9.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -106,7 +106,7 @@ todo a                        # interactive add
 todo ls                       # list
 todo n 1 "Checked logs"       # add a note to task 1
 todo u 1                      # reopen completed task 1
-todo x 1                      # delete task 1
+todo x 1 3 5                  # bulk delete tasks
 todo e                        # edit todo.txt
 todo t                        # full-screen terminal UI
 ```
@@ -129,7 +129,9 @@ It starts with today's tasks and supports:
 - `y` or `c`: copy the description, latest note, or all notes from the task list
 - `d`: mark the selected task complete
 - `u`: reopen the selected completed task
-- `x`: delete the selected task after confirmation
+- `Space`: mark or unmark tasks Ranger-style
+- `x`: delete marked tasks together, or the current task when none are marked
+- `Esc`: clear all marked tasks
 - `e`: edit the selected task's description
 - `/`: fuzzy-search the current view; submit a blank search to clear it
 - `t`: show today's tasks
@@ -212,11 +214,16 @@ todo log 1
 
 When note text is omitted, the command prompts for it.
 
-Delete a task after an interactive confirmation:
+Delete one or more tasks after an interactive confirmation:
 
 ```console
 todo delete 1
+todo delete 1 3 5
+todo x 1 3 5
 ```
+
+Bulk deletion asks for confirmation once. If any supplied ID does not exist,
+nothing is deleted.
 
 Open the text file with `$EDITOR`, or Vim when `$EDITOR` is unset:
 
