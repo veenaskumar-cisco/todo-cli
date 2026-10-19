@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.14.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.15.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -120,8 +120,11 @@ On Linux or macOS, run:
 todo t
 ```
 
-The Telescope-inspired dark interface has bordered results and preview panes,
-a persistent fuzzy-search box, selected-task details, and timestamped notes.
+The Telescope-inspired interface uses a Tokyo Night theme with a deep navy
+background, blue/cyan borders, purple accents, green completed tasks, and
+yellow in-progress tasks. It uses 256 colors when available and falls back to
+standard terminal colors. The UI has bordered results and preview panes, a
+persistent fuzzy-search box, selected-task details, and timestamped notes.
 It starts with today's tasks and supports:
 
 The left pane uses compact visible row numbers (`1`, `2`, `3`, ...), which

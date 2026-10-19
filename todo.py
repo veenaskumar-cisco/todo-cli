@@ -718,9 +718,10 @@ def tui_edit_text(
 
 
 def tui_theme(curses_module) -> dict[str, int]:
-    """Create a dark Telescope-inspired color palette when colors are available."""
+    """Create a Tokyo Night palette with a standard-color fallback."""
     theme = {
         "normal": curses_module.A_NORMAL,
+        "background": curses_module.A_NORMAL,
         "title": curses_module.A_BOLD,
         "border": curses_module.A_NORMAL,
         "selected": curses_module.A_REVERSE,
@@ -737,14 +738,36 @@ def tui_theme(curses_module) -> dict[str, int]:
     try:
         curses_module.start_color()
         curses_module.use_default_colors()
-        curses_module.init_pair(1, curses_module.COLOR_CYAN, -1)
-        curses_module.init_pair(2, curses_module.COLOR_MAGENTA, -1)
-        curses_module.init_pair(3, curses_module.COLOR_BLACK, curses_module.COLOR_CYAN)
-        curses_module.init_pair(4, curses_module.COLOR_GREEN, -1)
-        curses_module.init_pair(5, curses_module.COLOR_BLUE, -1)
-        curses_module.init_pair(6, curses_module.COLOR_YELLOW, -1)
+        if getattr(curses_module, "COLORS", 0) >= 256:
+            background = 234
+            foreground = 189
+            cyan = 117
+            purple = 141
+            selection = 60
+            green = 149
+            blue = 111
+            yellow = 179
+        else:
+            background = -1
+            foreground = -1
+            cyan = curses_module.COLOR_CYAN
+            purple = curses_module.COLOR_MAGENTA
+            selection = curses_module.COLOR_BLUE
+            green = curses_module.COLOR_GREEN
+            blue = curses_module.COLOR_BLUE
+            yellow = curses_module.COLOR_YELLOW
+
+        curses_module.init_pair(1, cyan, background)
+        curses_module.init_pair(2, purple, background)
+        curses_module.init_pair(3, foreground, selection)
+        curses_module.init_pair(4, green, background)
+        curses_module.init_pair(5, blue, background)
+        curses_module.init_pair(6, yellow, background)
+        curses_module.init_pair(7, foreground, background)
         theme.update(
             {
+                "normal": curses_module.color_pair(7),
+                "background": curses_module.color_pair(7),
                 "title": curses_module.color_pair(2) | curses_module.A_BOLD,
                 "border": curses_module.color_pair(1),
                 "selected": curses_module.color_pair(3) | curses_module.A_BOLD,
@@ -966,6 +989,12 @@ def run_tui(screen, curses_module) -> int:
         pass
     screen.keypad(True)
     theme = tui_theme(curses_module)
+    set_background = getattr(screen, "bkgd", None)
+    if set_background is not None:
+        try:
+            set_background(" ", theme["background"])
+        except curses_module.error:
+            pass
 
     while True:
         tasks = tui_visible_tasks(data, view, query)
