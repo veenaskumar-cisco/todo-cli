@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import textwrap
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -447,6 +448,178 @@ def tui_prompt(screen, curses_module, label: str) -> str:
             pass
 
 
+def tui_theme(curses_module) -> dict[str, int]:
+    """Create a dark Telescope-inspired color palette when colors are available."""
+    theme = {
+        "normal": curses_module.A_NORMAL,
+        "title": curses_module.A_BOLD,
+        "border": curses_module.A_NORMAL,
+        "selected": curses_module.A_REVERSE,
+        "done": curses_module.A_NORMAL,
+        "muted": curses_module.A_NORMAL,
+        "accent": curses_module.A_BOLD,
+    }
+
+    has_colors = getattr(curses_module, "has_colors", lambda: False)
+    if not has_colors():
+        return theme
+
+    try:
+        curses_module.start_color()
+        curses_module.use_default_colors()
+        curses_module.init_pair(1, curses_module.COLOR_CYAN, -1)
+        curses_module.init_pair(2, curses_module.COLOR_MAGENTA, -1)
+        curses_module.init_pair(3, curses_module.COLOR_BLACK, curses_module.COLOR_CYAN)
+        curses_module.init_pair(4, curses_module.COLOR_GREEN, -1)
+        curses_module.init_pair(5, curses_module.COLOR_BLUE, -1)
+        theme.update(
+            {
+                "title": curses_module.color_pair(2) | curses_module.A_BOLD,
+                "border": curses_module.color_pair(1),
+                "selected": curses_module.color_pair(3) | curses_module.A_BOLD,
+                "done": curses_module.color_pair(4),
+                "muted": curses_module.color_pair(5),
+                "accent": curses_module.color_pair(1) | curses_module.A_BOLD,
+            }
+        )
+    except curses_module.error:
+        pass
+    return theme
+
+
+def tui_box(
+    screen,
+    curses_module,
+    top: int,
+    left: int,
+    height: int,
+    width: int,
+    title: str,
+    attributes: int,
+) -> None:
+    """Draw a bordered pane with a title."""
+    if height < 3 or width < 4:
+        return
+    horizontal = "─" * max(0, width - 2)
+    tui_write(
+        screen,
+        curses_module,
+        top,
+        left,
+        f"┌{horizontal}┐",
+        left + width + 1,
+        attributes,
+    )
+    for row in range(top + 1, top + height - 1):
+        tui_write(screen, curses_module, row, left, "│", left + width, attributes)
+        tui_write(
+            screen,
+            curses_module,
+            row,
+            left + width - 1,
+            "│",
+            left + width + 1,
+            attributes,
+        )
+    tui_write(
+        screen,
+        curses_module,
+        top + height - 1,
+        left,
+        f"└{horizontal}┘",
+        left + width + 1,
+        attributes,
+    )
+    if title:
+        tui_write(
+            screen,
+            curses_module,
+            top,
+            left + 2,
+            f" {title} ",
+            left + width - 1,
+            attributes | curses_module.A_BOLD,
+        )
+
+
+def tui_preview(
+    screen,
+    curses_module,
+    task: Task | None,
+    top: int,
+    left: int,
+    height: int,
+    width: int,
+    theme: dict[str, int],
+) -> None:
+    """Render details for the selected task."""
+    if task is None:
+        tui_write(
+            screen,
+            curses_module,
+            top,
+            left,
+            "No task selected",
+            left + width,
+            theme["muted"],
+        )
+        return
+
+    completed = task.completed.isoformat() if task.completed else "-"
+    details = [
+        ("ID", str(task.task_id)),
+        ("Status", task.status),
+        ("Created", task.created.isoformat()),
+        ("Completed", completed),
+    ]
+    row = top
+    for label, value in details:
+        tui_write(
+            screen,
+            curses_module,
+            row,
+            left,
+            f"{label:<10}",
+            left + width,
+            theme["accent"],
+        )
+        tui_write(
+            screen,
+            curses_module,
+            row,
+            left + 11,
+            value,
+            left + width,
+            theme["normal"],
+        )
+        row += 1
+
+    row += 1
+    tui_write(
+        screen,
+        curses_module,
+        row,
+        left,
+        "Description",
+        left + width,
+        theme["accent"],
+    )
+    row += 2
+    for line in textwrap.wrap(task.description, width=max(10, width - 1)):
+        if row >= top + height:
+            break
+        tui_write(
+            screen,
+            curses_module,
+            row,
+            left,
+            line,
+            left + width,
+            theme["normal"],
+        )
+        row += 1
+
+
 def run_tui(screen, curses_module) -> int:
     """Run the full-screen keyboard interface."""
     data = load_todos()
@@ -461,6 +634,7 @@ def run_tui(screen, curses_module) -> int:
     except curses_module.error:
         pass
     screen.keypad(True)
+    theme = tui_theme(curses_module)
 
     while True:
         tasks = tui_visible_tasks(data, view, query)
@@ -472,15 +646,24 @@ def run_tui(screen, curses_module) -> int:
         height, width = screen.getmaxyx()
         screen.erase()
 
-        if height < 7 or width < 32:
+        if height < 18 or width < 72:
             tui_write(
                 screen,
                 curses_module,
                 0,
                 0,
-                "Terminal too small. Resize or press q.",
+                "Terminal too small for themed view (minimum 72x18).",
                 width,
-                curses_module.A_BOLD,
+                theme["title"],
+            )
+            tui_write(
+                screen,
+                curses_module,
+                2,
+                0,
+                "Resize the terminal or press q to quit.",
+                width,
+                theme["muted"],
             )
             screen.refresh()
             key = screen.get_wch()
@@ -489,25 +672,70 @@ def run_tui(screen, curses_module) -> int:
             continue
 
         view_name = {
-            "today": f"TODAY - {date.today().isoformat()}",
-            "pending": f"PENDING - {date.today().isoformat()}",
-            "all": "ALL TASKS",
+            "today": "TODAY",
+            "pending": "PENDING",
+            "all": "ALL",
         }[view]
-        title = f"TODO  {view_name}"
-        if query:
-            title += f"  / {query}"
-        tui_write(
+
+        banner = [
+            "████████╗ ██████╗ ██████╗  ██████╗",
+            "╚══██╔══╝██╔═══██╗██╔══██╗██╔═══██╗",
+            "   ██║   ██║   ██║██║  ██║██║   ██║",
+            "   ██║   ╚██████╔╝██████╔╝╚██████╔╝",
+        ]
+        for banner_row, banner_line in enumerate(banner):
+            tui_write(
+                screen,
+                curses_module,
+                banner_row,
+                2,
+                banner_line,
+                width,
+                theme["title"],
+            )
+
+        pane_top = len(banner)
+        pane_height = height - pane_top - 2
+        gap = 1
+        left_width = max(32, int((width - gap) * 0.42))
+        right_left = left_width + gap
+        right_width = width - right_left
+        search_height = 3
+        results_height = pane_height - search_height
+        search_top = pane_top + results_height
+
+        tui_box(
             screen,
             curses_module,
+            pane_top,
             0,
-            0,
-            title,
-            width,
-            curses_module.A_BOLD,
+            results_height,
+            left_width,
+            f"{view_name} RESULTS {len(tasks)}",
+            theme["border"],
         )
-        tui_write(screen, curses_module, 1, 0, "-" * (width - 1), width)
+        tui_box(
+            screen,
+            curses_module,
+            search_top,
+            0,
+            search_height,
+            left_width,
+            "SEARCH",
+            theme["border"],
+        )
+        tui_box(
+            screen,
+            curses_module,
+            pane_top,
+            right_left,
+            pane_height,
+            right_width,
+            "TASK PREVIEW",
+            theme["border"],
+        )
 
-        list_height = height - 5
+        list_height = max(1, results_height - 2)
         if selected < scroll_offset:
             scroll_offset = selected
         elif selected >= scroll_offset + list_height:
@@ -515,7 +743,15 @@ def run_tui(screen, curses_module) -> int:
 
         if not tasks:
             empty_text = "No matching tasks. Press a to add one."
-            tui_write(screen, curses_module, 2, 0, empty_text, width)
+            tui_write(
+                screen,
+                curses_module,
+                pane_top + 1,
+                2,
+                empty_text,
+                left_width - 1,
+                theme["muted"],
+            )
         else:
             for row_offset, task in enumerate(
                 tasks[scroll_offset : scroll_offset + list_height]
@@ -523,29 +759,69 @@ def run_tui(screen, curses_module) -> int:
                 task_index = scroll_offset + row_offset
                 marker = ">" if task_index == selected else " "
                 checkbox = "[x]" if task.status == "done" else "[ ]"
-                line = (
-                    f"{marker} {checkbox} {task.task_id:<5} "
-                    f"{task.description}  ({task.created.isoformat()})"
-                )
+                line = f"{marker} {checkbox} {task.task_id:<4} {task.description}"
                 attributes = (
-                    curses_module.A_REVERSE
+                    theme["selected"]
                     if task_index == selected
-                    else curses_module.A_NORMAL
+                    else theme["done"]
+                    if task.status == "done"
+                    else theme["normal"]
                 )
                 tui_write(
                     screen,
                     curses_module,
-                    2 + row_offset,
-                    0,
+                    pane_top + 1 + row_offset,
+                    1,
                     line,
-                    width,
+                    left_width - 1,
                     attributes,
                 )
 
+        search_text = f"> {query}" if query else "> press / to fuzzy search"
+        tui_write(
+            screen,
+            curses_module,
+            search_top + 1,
+            2,
+            search_text,
+            left_width - 1,
+            theme["accent"] if query else theme["muted"],
+        )
+
+        selected_task = tasks[selected] if tasks else None
+        tui_preview(
+            screen,
+            curses_module,
+            selected_task,
+            pane_top + 2,
+            right_left + 2,
+            pane_height - 4,
+            right_width - 4,
+            theme,
+        )
+
+        date_text = date.today().isoformat()
         status = message
         if query:
             status += f" | search: {query}"
-        tui_write(screen, curses_module, height - 2, 0, status, width)
+        tui_write(
+            screen,
+            curses_module,
+            height - 2,
+            0,
+            status,
+            width - len(date_text) - 2,
+            theme["muted"],
+        )
+        tui_write(
+            screen,
+            curses_module,
+            height - 2,
+            width - len(date_text) - 1,
+            date_text,
+            width,
+            theme["accent"],
+        )
         help_text = (
             "j/k move  a add  d done  x delete  e edit  / search  "
             "t today  p pending  A all  q quit"
@@ -557,7 +833,7 @@ def run_tui(screen, curses_module) -> int:
             0,
             help_text,
             width,
-            curses_module.A_BOLD,
+            theme["accent"],
         )
         screen.refresh()
 

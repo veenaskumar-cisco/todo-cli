@@ -61,7 +61,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.3.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.4.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -115,7 +115,9 @@ On Linux or macOS, run:
 todo t
 ```
 
-The interface starts with today's tasks and supports:
+The Telescope-inspired dark interface has a colored TODO banner, bordered
+results and preview panes, a persistent fuzzy-search box, and selected-task
+details. It starts with today's tasks and supports:
 
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
