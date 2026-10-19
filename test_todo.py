@@ -154,6 +154,7 @@ class TodoCliTests(unittest.TestCase):
 
         class FakeScreen:
             def __init__(self) -> None:
+                self.drawn_text: list[str] = []
                 self.keys = iter(
                     [
                         "/",
@@ -218,6 +219,7 @@ class TodoCliTests(unittest.TestCase):
                 _length: int,
                 _attributes: int = 0,
             ) -> None:
+                self.drawn_text.append(_text)
                 return None
 
             def refresh(self) -> None:
@@ -235,9 +237,10 @@ class TodoCliTests(unittest.TestCase):
             def get_wch(self) -> str:
                 return next(self.keys)
 
-        task = todo.Task(1, "done", date.today(), date.today(), "Test task")
-        second_task = todo.Task(2, "pending", date.today(), None, "Second task")
-        data = todo.TodoData(next_id=3, tasks=[task, second_task])
+        task = todo.Task(10, "done", date.today(), date.today(), "Test task")
+        second_task = todo.Task(20, "pending", date.today(), None, "Second task")
+        data = todo.TodoData(next_id=21, tasks=[task, second_task])
+        screen = FakeScreen()
         with (
             mock.patch.object(todo, "load_todos", return_value=data),
             mock.patch.object(todo, "save_todos") as save_todos,
@@ -245,7 +248,7 @@ class TodoCliTests(unittest.TestCase):
                 todo, "copy_to_clipboard", return_value="test clipboard"
             ) as copy_to_clipboard,
         ):
-            result = todo.run_tui(FakeScreen(), FakeCurses())
+            result = todo.run_tui(screen, FakeCurses())
         self.assertEqual(result, 0)
         self.assertEqual(task.status, "in-progress")
         self.assertIsNone(task.completed)
@@ -258,6 +261,12 @@ class TodoCliTests(unittest.TestCase):
         visual_copy = copy_to_clipboard.call_args_list[1].args[0]
         self.assertIn("Status", visual_copy)
         self.assertIn("Created", visual_copy)
+        self.assertTrue(
+            any("1. [x] Test task" in text for text in screen.drawn_text)
+        )
+        self.assertTrue(
+            any(text.startswith("ID") and text.endswith("10") for text in screen.drawn_text)
+        )
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()

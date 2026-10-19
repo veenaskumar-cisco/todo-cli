@@ -1088,8 +1088,8 @@ def run_tui(screen, curses_module) -> int:
                     "done": "[x]",
                 }[task.status]
                 line = (
-                    f"{marker}{marked} {checkbox} "
-                    f"{task.task_id:<4} {task.description}"
+                    f"{marker}{marked} {task_index + 1:>2}. "
+                    f"{checkbox} {task.description}"
                 )
                 attributes = (
                     theme["selected"]

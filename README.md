@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.13.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.14.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -123,6 +123,11 @@ todo t
 The Telescope-inspired dark interface has bordered results and preview panes,
 a persistent fuzzy-search box, selected-task details, and timestamped notes.
 It starts with today's tasks and supports:
+
+The left pane uses compact visible row numbers (`1`, `2`, `3`, ...), which
+close gaps after deletion and filtering. The preview pane shows the task's
+permanent ID. CLI commands always use that permanent ID; IDs are never
+renumbered or reused.
 
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
