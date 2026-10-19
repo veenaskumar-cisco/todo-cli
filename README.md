@@ -20,19 +20,21 @@ todo-cli/
 `todo.txt` is tab-separated text:
 
 ```text
-# todo-cli v1 next_id=3
-# id	status	created	completed	description
-1	pending	2026-10-19	-	Run BGP transit sanity on ifav210
-2	done	2026-10-19	2026-10-19	Check remote-leaf SSH login issue
+# todo-cli v2 next_id=3
+# record	id	status	created	completed	text
+task	1	pending	2026-10-19	-	Run BGP transit sanity on ifav210
+note	1	-	2026-10-19T12:15:00	-	Checked ifav210 logs
+task	2	done	2026-10-19	2026-10-19	Check remote-leaf SSH login issue
 ```
 
 The first line stores the next unused ID. This makes IDs stable between runs
 and prevents a deleted ID from being reused. The second line names the
-columns. Each remaining line is one task. A pending task uses `-` for its
+columns. A `task` line stores a task, while a `note` line stores a timestamped
+note for the task ID in its second field. A pending task uses `-` for its
 completion date.
 
 You may edit this file in Vim. Keep the two header lines, use tabs between the
-five task fields, and make `next_id` greater than every task ID. If a line is
+six fields, and make `next_id` greater than every task ID. If a line is
 invalid, the program reports it and refuses to rewrite the file.
 
 ## Setup
@@ -61,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.5.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.6.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -102,6 +104,7 @@ Short commands are available:
 todo a "Run BGP sanity test"  # add
 todo a                        # interactive add
 todo ls                       # list
+todo n 1 "Checked logs"       # add a note to task 1
 todo u 1                      # reopen completed task 1
 todo x 1                      # delete task 1
 todo e                        # edit todo.txt
@@ -116,12 +119,13 @@ On Linux or macOS, run:
 todo t
 ```
 
-The Telescope-inspired dark interface has a colored TODO banner, bordered
-results and preview panes, a persistent fuzzy-search box, and selected-task
-details. It starts with today's tasks and supports:
+The Telescope-inspired dark interface has bordered results and preview panes,
+a persistent fuzzy-search box, selected-task details, and timestamped notes.
+It starts with today's tasks and supports:
 
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
+- `n`: add a timestamped note/log to the selected task
 - `d`: mark the selected task complete
 - `u`: reopen the selected completed task
 - `x`: delete the selected task after confirmation
@@ -181,6 +185,16 @@ Reopen a completed task and clear its completion date:
 todo undo 1
 todo u 1
 ```
+
+Add a timestamped note or log entry to a task:
+
+```console
+todo note 1 "Checked interface counters"
+todo n 1 "BGP session recovered"
+todo log 1
+```
+
+When note text is omitted, the command prompts for it.
 
 Delete a task after an interactive confirmation:
 

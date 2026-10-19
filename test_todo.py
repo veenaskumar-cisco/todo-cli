@@ -98,6 +98,31 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("requires an interactive terminal", result.stderr)
 
+    def test_task_notes_and_legacy_file_upgrade(self) -> None:
+        todo_file = self.project / "todo.txt"
+        todo_file.write_text(
+            "# todo-cli v1 next_id=2\n"
+            "# id\tstatus\tcreated\tcompleted\tdescription\n"
+            f"1\tpending\t{date.today().isoformat()}\t-\tInvestigate BGP issue\n",
+            encoding="utf-8",
+        )
+
+        noted = self.run_todo("n", "1", "Checked ifav210 logs")
+        self.assertEqual(noted.returncode, 0)
+        self.assertIn("Added note to task 1", noted.stdout)
+
+        data = todo.load_todos(todo_file)
+        self.assertEqual(data.tasks[0].notes[0].text, "Checked ifav210 logs")
+        self.assertTrue(
+            todo_file.read_text(encoding="utf-8").startswith("# todo-cli v2")
+        )
+
+        prompted = self.run_todo("log", "1", input_text="BGP session recovered\n")
+        self.assertEqual(prompted.returncode, 0)
+        data = todo.load_todos(todo_file)
+        self.assertEqual(len(data.tasks[0].notes), 2)
+        self.assertEqual(data.tasks[0].notes[1].text, "BGP session recovered")
+
     def test_tui_fuzzy_search(self) -> None:
         self.assertTrue(todo.fuzzy_match("bgpst", "Run BGP sanity test"))
         self.assertTrue(todo.fuzzy_match("ssh", "Check remote-leaf SSH login"))
@@ -116,9 +141,17 @@ class TodoCliTests(unittest.TestCase):
             def curs_set(_visibility: int) -> None:
                 return None
 
+            @staticmethod
+            def echo() -> None:
+                return None
+
+            @staticmethod
+            def noecho() -> None:
+                return None
+
         class FakeScreen:
             def __init__(self) -> None:
-                self.keys = iter(["u", "q"])
+                self.keys = iter(["u", "n", "q"])
 
             def getmaxyx(self) -> tuple[int, int]:
                 return (24, 100)
@@ -142,6 +175,15 @@ class TodoCliTests(unittest.TestCase):
             def refresh(self) -> None:
                 return None
 
+            def move(self, _row: int, _column: int) -> None:
+                return None
+
+            def clrtoeol(self) -> None:
+                return None
+
+            def getstr(self, _row: int, _column: int, _length: int) -> bytes:
+                return b"Follow-up note"
+
             def get_wch(self) -> str:
                 return next(self.keys)
 
@@ -155,7 +197,8 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(task.status, "pending")
         self.assertIsNone(task.completed)
-        save_todos.assert_called_once_with(data)
+        self.assertEqual(task.notes[0].text, "Follow-up note")
+        self.assertEqual(save_todos.call_count, 2)
 
     def test_add_list_and_complete_task(self) -> None:
         today = date.today().isoformat()

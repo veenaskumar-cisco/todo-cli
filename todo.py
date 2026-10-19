@@ -12,19 +12,26 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 
 
 TODO_FILE = Path(__file__).resolve().parent / "todo.txt"
-FORMAT_LINE = "# todo-cli v1 next_id={next_id}"
-COLUMN_LINE = "# id\tstatus\tcreated\tcompleted\tdescription"
-FORMAT_PATTERN = re.compile(r"# todo-cli v1 next_id=([1-9][0-9]*)")
+FORMAT_LINE = "# todo-cli v2 next_id={next_id}"
+COLUMN_LINE = "# record\tid\tstatus\tcreated\tcompleted\ttext"
+LEGACY_COLUMN_LINE = "# id\tstatus\tcreated\tcompleted\tdescription"
+FORMAT_PATTERN = re.compile(r"# todo-cli v([12]) next_id=([1-9][0-9]*)")
 
 
 class TodoFileError(Exception):
     """Raised when todo.txt cannot be safely read."""
+
+
+@dataclass
+class TaskNote:
+    created: datetime
+    text: str
 
 
 @dataclass
@@ -34,6 +41,7 @@ class Task:
     created: date
     completed: date | None
     description: str
+    notes: list[TaskNote] = field(default_factory=list)
 
 
 @dataclass
@@ -63,12 +71,19 @@ def parse_task_id(value: str) -> int:
     return task_id
 
 
-def parse_task_row(row: list[str], line_number: int) -> Task:
+def parse_task_row(row: list[str], line_number: int, version: int) -> Task:
     """Validate and convert one tab-separated task row."""
-    if len(row) != 5:
+    expected_fields = 5 if version == 1 else 6
+    if len(row) != expected_fields:
         raise TodoFileError(
-            f"line {line_number}: expected 5 tab-separated fields, found {len(row)}"
+            f"line {line_number}: expected {expected_fields} tab-separated "
+            f"fields, found {len(row)}"
         )
+
+    if version == 2:
+        if row[0] != "task":
+            raise TodoFileError(f"line {line_number}: unknown record type {row[0]!r}")
+        row = row[1:]
 
     raw_id, status, raw_created, raw_completed, description = row
     try:
@@ -108,6 +123,37 @@ def parse_task_row(row: list[str], line_number: int) -> Task:
     return Task(task_id, status, created, completed, description)
 
 
+def parse_note_row(row: list[str], line_number: int) -> tuple[int, TaskNote]:
+    """Validate one v2 note row."""
+    if len(row) != 6:
+        raise TodoFileError(
+            f"line {line_number}: expected 6 tab-separated fields, found {len(row)}"
+        )
+
+    record_type, raw_id, status, raw_created, completed, text = row
+    if record_type != "note":
+        raise TodoFileError(
+            f"line {line_number}: unknown record type {record_type!r}"
+        )
+    if status != "-" or completed != "-":
+        raise TodoFileError(
+            f"line {line_number}: note status and completion fields must be '-'"
+        )
+    try:
+        task_id = parse_task_id(raw_id)
+    except argparse.ArgumentTypeError as exc:
+        raise TodoFileError(f"line {line_number}: {exc}") from exc
+    try:
+        created = datetime.fromisoformat(raw_created)
+    except ValueError as exc:
+        raise TodoFileError(
+            f"line {line_number}: invalid note timestamp {raw_created!r}"
+        ) from exc
+    if not text.strip():
+        raise TodoFileError(f"line {line_number}: note cannot be empty")
+    return task_id, TaskNote(created, text)
+
+
 def load_todos(path: Path = TODO_FILE) -> TodoData:
     """Read todo data, rejecting malformed content before any write occurs."""
     if not path.exists() or path.stat().st_size == 0:
@@ -125,13 +171,16 @@ def load_todos(path: Path = TODO_FILE) -> TodoData:
     format_match = FORMAT_PATTERN.fullmatch(lines[0].rstrip("\r\n"))
     if not format_match:
         raise TodoFileError("line 1: missing or invalid todo-cli format header")
-    next_id = int(format_match.group(1))
+    version = int(format_match.group(1))
+    next_id = int(format_match.group(2))
 
-    if len(lines) < 2 or lines[1].rstrip("\r\n") != COLUMN_LINE:
+    expected_header = LEGACY_COLUMN_LINE if version == 1 else COLUMN_LINE
+    if len(lines) < 2 or lines[1].rstrip("\r\n") != expected_header:
         raise TodoFileError("line 2: missing or invalid column header")
 
     tasks: list[Task] = []
     seen_ids: set[int] = set()
+    note_rows: list[tuple[int, TaskNote, int]] = []
     for line_number, line in enumerate(lines[2:], start=3):
         if not line.strip():
             continue
@@ -139,13 +188,27 @@ def load_todos(path: Path = TODO_FILE) -> TodoData:
             row = next(csv.reader([line], delimiter="\t"))
         except csv.Error as exc:
             raise TodoFileError(f"line {line_number}: invalid tab-separated data") from exc
-        task = parse_task_row(row, line_number)
+        if version == 2 and row and row[0] == "note":
+            task_id, note = parse_note_row(row, line_number)
+            note_rows.append((task_id, note, line_number))
+            continue
+
+        task = parse_task_row(row, line_number, version)
         if task.task_id in seen_ids:
             raise TodoFileError(
                 f"line {line_number}: duplicate task ID {task.task_id}"
             )
         seen_ids.add(task.task_id)
         tasks.append(task)
+
+    tasks_by_id = {task.task_id: task for task in tasks}
+    for task_id, note, line_number in note_rows:
+        task = tasks_by_id.get(task_id)
+        if task is None:
+            raise TodoFileError(
+                f"line {line_number}: note refers to missing task ID {task_id}"
+            )
+        task.notes.append(note)
 
     if seen_ids and next_id <= max(seen_ids):
         raise TodoFileError(
@@ -178,6 +241,7 @@ def save_todos(data: TodoData, path: Path = TODO_FILE) -> None:
             for task in data.tasks:
                 writer.writerow(
                     [
+                        "task",
                         task.task_id,
                         task.status,
                         task.created.isoformat(),
@@ -185,6 +249,17 @@ def save_todos(data: TodoData, path: Path = TODO_FILE) -> None:
                         task.description,
                     ]
                 )
+                for note in task.notes:
+                    writer.writerow(
+                        [
+                            "note",
+                            task.task_id,
+                            "-",
+                            note.created.isoformat(timespec="seconds"),
+                            "-",
+                            note.text,
+                        ]
+                    )
         os.replace(temporary_name, path)
     except OSError as exc:
         raise TodoFileError(f"could not write {path}: {exc}") from exc
@@ -334,6 +409,39 @@ def command_undo(args: argparse.Namespace) -> int:
     task.completed = None
     save_todos(data)
     print(f"Reopened task {task.task_id}.")
+    return 0
+
+
+def command_note(args: argparse.Namespace) -> int:
+    """Append a timestamped note to a task."""
+    data = load_todos()
+    task = find_task(data, args.task_id)
+    if task is None:
+        print(f"Error: task ID {args.task_id} does not exist.", file=sys.stderr)
+        return 1
+
+    if args.text is None:
+        try:
+            text = input(f"Note for task {task.task_id}: ").strip()
+        except EOFError:
+            text = ""
+    else:
+        text = args.text.strip()
+
+    if not text:
+        print("Error: note cannot be empty.", file=sys.stderr)
+        return 1
+    if "\n" in text or "\r" in text or "\0" in text:
+        print("Error: note must fit on one text line.", file=sys.stderr)
+        return 1
+
+    note = TaskNote(datetime.now(), text)
+    task.notes.append(note)
+    save_todos(data)
+    print(
+        f"Added note to task {task.task_id} at "
+        f"{note.created.isoformat(timespec='seconds')}."
+    )
     return 0
 
 
@@ -637,6 +745,41 @@ def tui_preview(
         )
         row += 1
 
+    if task.notes and row < top + height - 1:
+        row += 1
+        tui_write(
+            screen,
+            curses_module,
+            row,
+            left,
+            f"Notes / Log ({len(task.notes)})",
+            left + width,
+            theme["accent"],
+        )
+        row += 1
+
+    for note in reversed(task.notes):
+        if row >= top + height:
+            break
+        timestamp = note.created.strftime("%Y-%m-%d %H:%M")
+        note_lines = textwrap.wrap(
+            f"[{timestamp}] {note.text}", width=max(10, width - 1)
+        )
+        for line in note_lines:
+            if row >= top + height:
+                break
+            tui_write(
+                screen,
+                curses_module,
+                row,
+                left,
+                line,
+                left + width,
+                theme["normal"],
+            )
+            row += 1
+        row += 1
+
 
 def run_tui(screen, curses_module) -> int:
     """Run the full-screen keyboard interface."""
@@ -664,13 +807,13 @@ def run_tui(screen, curses_module) -> int:
         height, width = screen.getmaxyx()
         screen.erase()
 
-        if height < 18 or width < 72:
+        if height < 14 or width < 72:
             tui_write(
                 screen,
                 curses_module,
                 0,
                 0,
-                "Terminal too small for themed view (minimum 72x18).",
+                "Terminal too small for themed view (minimum 72x14).",
                 width,
                 theme["title"],
             )
@@ -695,24 +838,7 @@ def run_tui(screen, curses_module) -> int:
             "all": "ALL",
         }[view]
 
-        banner = [
-            "████████╗ ██████╗ ██████╗  ██████╗",
-            "╚══██╔══╝██╔═══██╗██╔══██╗██╔═══██╗",
-            "   ██║   ██║   ██║██║  ██║██║   ██║",
-            "   ██║   ╚██████╔╝██████╔╝╚██████╔╝",
-        ]
-        for banner_row, banner_line in enumerate(banner):
-            tui_write(
-                screen,
-                curses_module,
-                banner_row,
-                2,
-                banner_line,
-                width,
-                theme["title"],
-            )
-
-        pane_top = len(banner)
+        pane_top = 0
         pane_height = height - pane_top - 2
         gap = 1
         left_width = max(32, int((width - gap) * 0.42))
@@ -841,7 +967,7 @@ def run_tui(screen, curses_module) -> int:
             theme["accent"],
         )
         help_text = (
-            "j/k move  a add  d done  u undo  x delete  e edit  / search  "
+            "j/k move  a add  n note  d done  u undo  x delete  e edit  / search  "
             "t today  p pending  A all  q quit"
         )
         tui_write(
@@ -895,6 +1021,15 @@ def run_tui(screen, curses_module) -> int:
                 task.completed = None
                 save_todos(data)
                 message = f"Reopened task {task.task_id}"
+        elif key == "n" and tasks:
+            task = tasks[selected]
+            text = tui_prompt(screen, curses_module, f"Note for {task.task_id}: ")
+            if text:
+                task.notes.append(TaskNote(datetime.now(), text))
+                save_todos(data)
+                message = f"Added note to task {task.task_id}"
+            else:
+                message = "Note cancelled"
         elif key == "x" and tasks:
             task = tasks[selected]
             answer = tui_prompt(
@@ -1005,6 +1140,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     undo_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
     undo_parser.set_defaults(handler=command_undo)
+
+    note_parser = subparsers.add_parser(
+        "note", aliases=["n", "log"], help="add a timestamped note to a task"
+    )
+    note_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
+    note_parser.add_argument("text", nargs="?", help="note text")
+    note_parser.set_defaults(handler=command_note)
 
     delete_parser = subparsers.add_parser(
         "delete", aliases=["x"], help="delete a task"
