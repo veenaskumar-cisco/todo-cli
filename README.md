@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.11.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.11.1/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at

@@ -366,11 +366,11 @@ def command_list(args: argparse.Namespace) -> int:
         print(empty_message)
         return 0
 
-    print(f"{'ID':<6} {'STATUS':<9} {'CREATED':<12} {'COMPLETED':<12} DESCRIPTION")
+    print(f"{'ID':<6} {'STATUS':<12} {'CREATED':<12} {'COMPLETED':<12} DESCRIPTION")
     for task in tasks:
         completed = task.completed.isoformat() if task.completed else "-"
         print(
-            f"{task.task_id:<6} {task.status:<9} "
+            f"{task.task_id:<6} {task.status:<12} "
             f"{task.created.isoformat():<12} {completed:<12} {task.description}"
         )
     return 0
