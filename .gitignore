@@ -1,0 +1,14 @@
+# Personal task data
+todo.txt
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Local configuration and credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
