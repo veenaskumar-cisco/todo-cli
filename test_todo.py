@@ -160,6 +160,7 @@ class TodoCliTests(unittest.TestCase):
                         "z",
                         "A",
                         "u",
+                        "s",
                         "n",
                         "y",
                         "\x0c",
@@ -223,10 +224,10 @@ class TodoCliTests(unittest.TestCase):
         ):
             result = todo.run_tui(FakeScreen(), FakeCurses())
         self.assertEqual(result, 0)
-        self.assertEqual(task.status, "pending")
+        self.assertEqual(task.status, "in-progress")
         self.assertIsNone(task.completed)
         self.assertEqual(task.notes[0].text, "Follow-up note")
-        self.assertEqual(save_todos.call_count, 3)
+        self.assertEqual(save_todos.call_count, 4)
         self.assertEqual(data.tasks, [])
         self.assertEqual(copy_to_clipboard.call_count, 2)
         copied_note = copy_to_clipboard.call_args_list[0].args[0]
@@ -246,6 +247,17 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(listed.returncode, 0)
         self.assertIn("1      pending", listed.stdout)
         self.assertIn("Run BGP transit sanity", listed.stdout)
+
+        started = self.run_todo("s", "1")
+        self.assertEqual(started.returncode, 0)
+        self.assertIn("Started task 1", started.stdout)
+
+        in_progress = self.run_todo("list")
+        self.assertIn("1      in-progress", in_progress.stdout)
+
+        already_started = self.run_todo("start", "1")
+        self.assertEqual(already_started.returncode, 1)
+        self.assertIn("already in progress", already_started.stderr)
 
         completed = self.run_todo("done", "1")
         self.assertEqual(completed.returncode, 0)

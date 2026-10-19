@@ -93,9 +93,9 @@ def parse_task_row(row: list[str], line_number: int, version: int) -> Task:
     except argparse.ArgumentTypeError as exc:
         raise TodoFileError(f"line {line_number}: {exc}") from exc
 
-    if status not in {"pending", "done"}:
+    if status not in {"pending", "in-progress", "done"}:
         raise TodoFileError(
-            f"line {line_number}: status must be 'pending' or 'done'"
+            f"line {line_number}: status must be 'pending', 'in-progress', or 'done'"
         )
 
     try:
@@ -105,10 +105,11 @@ def parse_task_row(row: list[str], line_number: int, version: int) -> Task:
             f"line {line_number}: invalid creation date {raw_created!r}"
         ) from exc
 
-    if status == "pending":
+    if status != "done":
         if raw_completed != "-":
             raise TodoFileError(
-                f"line {line_number}: a pending task must use '-' as completion date"
+                f"line {line_number}: an incomplete task must use '-' "
+                "as completion date"
             )
         completed = None
     else:
@@ -396,6 +397,24 @@ def command_done(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_start(args: argparse.Namespace) -> int:
+    """Mark a task as in progress."""
+    data = load_todos()
+    task = find_task(data, args.task_id)
+    if task is None:
+        print(f"Error: task ID {args.task_id} does not exist.", file=sys.stderr)
+        return 1
+    if task.status == "in-progress":
+        print(f"Task {task.task_id} is already in progress.", file=sys.stderr)
+        return 1
+
+    task.status = "in-progress"
+    task.completed = None
+    save_todos(data)
+    print(f"Started task {task.task_id}.")
+    return 0
+
+
 def command_undo(args: argparse.Namespace) -> int:
     """Reopen a completed task."""
     data = load_todos()
@@ -604,6 +623,7 @@ def tui_theme(curses_module) -> dict[str, int]:
         "border": curses_module.A_NORMAL,
         "selected": curses_module.A_REVERSE,
         "done": curses_module.A_NORMAL,
+        "progress": curses_module.A_BOLD,
         "muted": curses_module.A_NORMAL,
         "accent": curses_module.A_BOLD,
     }
@@ -620,12 +640,14 @@ def tui_theme(curses_module) -> dict[str, int]:
         curses_module.init_pair(3, curses_module.COLOR_BLACK, curses_module.COLOR_CYAN)
         curses_module.init_pair(4, curses_module.COLOR_GREEN, -1)
         curses_module.init_pair(5, curses_module.COLOR_BLUE, -1)
+        curses_module.init_pair(6, curses_module.COLOR_YELLOW, -1)
         theme.update(
             {
                 "title": curses_module.color_pair(2) | curses_module.A_BOLD,
                 "border": curses_module.color_pair(1),
                 "selected": curses_module.color_pair(3) | curses_module.A_BOLD,
                 "done": curses_module.color_pair(4),
+                "progress": curses_module.color_pair(6) | curses_module.A_BOLD,
                 "muted": curses_module.color_pair(5),
                 "accent": curses_module.color_pair(1) | curses_module.A_BOLD,
             }
@@ -957,7 +979,11 @@ def run_tui(screen, curses_module) -> int:
                 task_index = scroll_offset + row_offset
                 marker = ">" if task_index == selected else " "
                 marked = "*" if task.task_id in marked_ids else " "
-                checkbox = "[x]" if task.status == "done" else "[ ]"
+                checkbox = {
+                    "pending": "[ ]",
+                    "in-progress": "[~]",
+                    "done": "[x]",
+                }[task.status]
                 line = (
                     f"{marker}{marked} {checkbox} "
                     f"{task.task_id:<4} {task.description}"
@@ -967,6 +993,8 @@ def run_tui(screen, curses_module) -> int:
                     if task_index == selected
                     else theme["done"]
                     if task.status == "done"
+                    else theme["progress"]
+                    if task.status == "in-progress"
                     else theme["normal"]
                 )
                 tui_write(
@@ -1047,7 +1075,8 @@ def run_tui(screen, curses_module) -> int:
         else:
             help_text = (
                 "TASKS  j/k move  Space select  x delete  Esc clear  "
-                "Ctrl+L preview  a add  n note  d done  u undo  / search  q quit"
+                "Ctrl+L preview  a add  n note  s start  d done  u undo  "
+                "/ search  q quit"
             )
         tui_write(
             screen,
@@ -1195,6 +1224,15 @@ def run_tui(screen, curses_module) -> int:
                 message = f"Added task {task.task_id}"
             else:
                 message = "Add cancelled"
+        elif key == "s" and tasks:
+            task = tasks[selected]
+            if task.status == "in-progress":
+                message = f"Task {task.task_id} is already in progress"
+            else:
+                task.status = "in-progress"
+                task.completed = None
+                save_todos(data)
+                message = f"Started task {task.task_id}"
         elif key == "d" and tasks:
             task = tasks[selected]
             if task.status == "done":
@@ -1365,6 +1403,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--date", type=parse_date, metavar="YYYY-MM-DD", help="show one date"
     )
     list_parser.set_defaults(handler=command_list)
+
+    start_parser = subparsers.add_parser(
+        "start", aliases=["s"], help="mark a task in progress"
+    )
+    start_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")
+    start_parser.set_defaults(handler=command_start)
 
     done_parser = subparsers.add_parser("done", help="mark a task completed")
     done_parser.add_argument("task_id", type=parse_task_id, metavar="TASK-ID")

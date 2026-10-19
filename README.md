@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.10.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.11.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -105,6 +105,7 @@ todo a "Run BGP sanity test"  # add
 todo a                        # interactive add
 todo ls                       # list
 todo n 1 "Checked logs"       # add a note to task 1
+todo s 1                      # mark task 1 in progress
 todo u 1                      # reopen completed task 1
 todo x 1 3 5                  # bulk delete tasks
 todo e                        # edit todo.txt
@@ -126,6 +127,7 @@ It starts with today's tasks and supports:
 - `j` / `k` or arrow keys: move between tasks
 - `a`: add a task
 - `n`: add a timestamped note/log to the selected task
+- `s`: mark the selected task as in progress (`[~]`)
 - `y` or `c`: copy the description, latest note, or all notes from the task list
 - `d`: mark the selected task complete
 - `u`: reopen the selected completed task
@@ -197,6 +199,16 @@ Complete a task using its ID:
 ```console
 todo done 1
 ```
+
+Mark a task as in progress:
+
+```console
+todo start 1
+todo s 1
+```
+
+In-progress tasks display as `[~]` in the terminal UI. Starting a completed
+task clears its completion date.
 
 Reopen a completed task and clear its completion date:
 
