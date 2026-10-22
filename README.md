@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.15.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.16.0/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -149,6 +149,12 @@ renumbered or reused.
 - `p`: show today's pending tasks
 - `A`: leave search, clear its query, and show all tasks
 - `q`: quit
+
+Press `Space`, `f`, `f` to open a centered Telescope-style picker containing
+tasks from every date. Tasks are grouped under newest-first date headers.
+Use `j` / `k` to move, `/` for live fuzzy filtering, `Enter` to open the
+selected task in the all-tasks view, or `q` / `Esc` to close the dialog.
+A single `Space` still marks the current task after the short leader timeout.
 
 For Vim-style preview copying:
 

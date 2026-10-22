@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -130,6 +130,78 @@ class TodoCliTests(unittest.TestCase):
         self.assertTrue(todo.fuzzy_match("bgpst", "Run BGP sanity test"))
         self.assertTrue(todo.fuzzy_match("ssh", "Check remote-leaf SSH login"))
         self.assertFalse(todo.fuzzy_match("status", "Study Linux basics"))
+
+    def test_space_ff_and_date_grouping(self) -> None:
+        class FakeCurses:
+            A_BOLD = 1
+            error = RuntimeError
+
+        class LeaderScreen:
+            def __init__(self) -> None:
+                self.keys = iter(["f", "f"])
+                self.timeouts: list[int] = []
+
+            def getmaxyx(self) -> tuple[int, int]:
+                return (24, 100)
+
+            def addnstr(
+                self,
+                _row: int,
+                _column: int,
+                _text: str,
+                _length: int,
+                _attributes: int = 0,
+            ) -> None:
+                return None
+
+            def refresh(self) -> None:
+                return None
+
+            def timeout(self, milliseconds: int) -> None:
+                self.timeouts.append(milliseconds)
+
+            def get_wch(self) -> str:
+                return next(self.keys)
+
+        screen = LeaderScreen()
+        action = todo.tui_space_action(
+            screen, FakeCurses(), {"accent": FakeCurses.A_BOLD}
+        )
+        self.assertEqual(action, "all-dialog")
+        self.assertEqual(screen.timeouts, [1000, -1])
+
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        data = todo.TodoData(
+            next_id=4,
+            tasks=[
+                todo.Task(1, "pending", yesterday, None, "Older"),
+                todo.Task(2, "pending", today, None, "Newest"),
+                todo.Task(3, "done", today, today, "Also today"),
+            ],
+        )
+        rows = todo.date_grouped_rows(data, "")
+        self.assertEqual(rows[0], (today.isoformat(), None))
+        self.assertEqual(rows[1][1].task_id, 2)
+        self.assertEqual(rows[2][1].task_id, 3)
+        self.assertEqual(rows[3], (yesterday.isoformat(), None))
+
+        dialog_screen = LeaderScreen()
+        dialog_screen.keys = iter(["\n"])
+        theme = {
+            "background": 0,
+            "accent": 1,
+            "muted": 0,
+            "selected": 2,
+            "done": 0,
+            "progress": 1,
+            "normal": 0,
+            "border": 0,
+        }
+        selected_id = todo.tui_all_tasks_dialog(
+            dialog_screen, FakeCurses(), data, theme
+        )
+        self.assertEqual(selected_id, 2)
 
     def test_tui_renders_and_quits(self) -> None:
         class FakeCurses:

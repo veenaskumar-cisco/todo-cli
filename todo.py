@@ -968,6 +968,240 @@ def copy_to_clipboard(text: str) -> str:
     return "terminal OSC 52"
 
 
+def date_grouped_rows(
+    data: TodoData, query: str
+) -> list[tuple[str, Task | None]]:
+    """Build date headers and task rows for the all-tasks dialog."""
+    tasks = list(data.tasks)
+    if query:
+        tasks = [
+            task
+            for task in tasks
+            if fuzzy_match(
+                query,
+                f"{task.task_id} {task.status} {task.created} {task.description}",
+            )
+        ]
+
+    rows: list[tuple[str, Task | None]] = []
+    dates = sorted({task.created for task in tasks}, reverse=True)
+    for created_date in dates:
+        rows.append((created_date.isoformat(), None))
+        for task in tasks:
+            if task.created == created_date:
+                rows.append(("", task))
+    return rows
+
+
+def tui_space_action(screen, curses_module, theme: dict[str, int]) -> str:
+    """Resolve Space, Space-Space, or Space-f-f without losing mark behavior."""
+    set_timeout = getattr(screen, "timeout", None)
+    if set_timeout is None:
+        return "mark"
+
+    height, width = screen.getmaxyx()
+    tui_write(
+        screen,
+        curses_module,
+        height - 1,
+        0,
+        "LEADER  f f: all tasks by date   Space: mark   Esc: cancel",
+        width,
+        theme["accent"],
+    )
+    screen.refresh()
+
+    try:
+        set_timeout(1000)
+        try:
+            second_key = screen.get_wch()
+        except curses_module.error:
+            return "mark"
+        if second_key == " ":
+            return "mark"
+        if second_key == "\x1b":
+            return "cancel"
+        if second_key != "f":
+            return "cancel"
+
+        try:
+            third_key = screen.get_wch()
+        except curses_module.error:
+            return "cancel"
+        return "all-dialog" if third_key == "f" else "cancel"
+    finally:
+        set_timeout(-1)
+
+
+def tui_all_tasks_dialog(
+    screen, curses_module, data: TodoData, theme: dict[str, int]
+) -> int | None:
+    """Open a centered, date-grouped all-tasks picker."""
+    query = ""
+    search_focused = False
+    selected_row = 0
+    scroll_offset = 0
+
+    while True:
+        terminal_height, terminal_width = screen.getmaxyx()
+        dialog_width = min(terminal_width - 4, max(60, int(terminal_width * 0.85)))
+        dialog_height = min(
+            terminal_height - 2, max(10, int(terminal_height * 0.85))
+        )
+        top = max(0, (terminal_height - dialog_height) // 2)
+        left = max(0, (terminal_width - dialog_width) // 2)
+
+        rows = date_grouped_rows(data, query)
+        task_indices = [
+            index for index, (_label, task) in enumerate(rows) if task is not None
+        ]
+        if task_indices:
+            if selected_row not in task_indices:
+                selected_row = task_indices[0]
+        else:
+            selected_row = 0
+
+        for row in range(top, top + dialog_height):
+            tui_write(
+                screen,
+                curses_module,
+                row,
+                left,
+                " " * dialog_width,
+                left + dialog_width + 1,
+                theme["background"],
+            )
+        tui_box(
+            screen,
+            curses_module,
+            top,
+            left,
+            dialog_height,
+            dialog_width,
+            "ALL TASKS BY DATE",
+            theme["accent"],
+        )
+
+        list_top = top + 2
+        list_height = max(1, dialog_height - 6)
+        if selected_row < scroll_offset:
+            scroll_offset = selected_row
+        elif selected_row >= scroll_offset + list_height:
+            scroll_offset = selected_row - list_height + 1
+
+        if not rows:
+            tui_write(
+                screen,
+                curses_module,
+                list_top,
+                left + 2,
+                "No matching tasks",
+                left + dialog_width - 1,
+                theme["muted"],
+            )
+        for row_offset, (date_label, task) in enumerate(
+            rows[scroll_offset : scroll_offset + list_height]
+        ):
+            row_index = scroll_offset + row_offset
+            if task is None:
+                text = f"── {date_label} ──"
+                attributes = theme["accent"]
+            else:
+                marker = {
+                    "pending": "[ ]",
+                    "in-progress": "[~]",
+                    "done": "[x]",
+                }[task.status]
+                text = f"{marker} {task.task_id:<5} {task.description}"
+                attributes = (
+                    theme["selected"]
+                    if row_index == selected_row
+                    else theme["done"]
+                    if task.status == "done"
+                    else theme["progress"]
+                    if task.status == "in-progress"
+                    else theme["normal"]
+                )
+            tui_write(
+                screen,
+                curses_module,
+                list_top + row_offset,
+                left + 2,
+                text,
+                left + dialog_width - 1,
+                attributes,
+            )
+
+        search_text = f"> {query}_" if search_focused else f"> {query}"
+        if not query and not search_focused:
+            search_text = "> press / to fuzzy search"
+        tui_write(
+            screen,
+            curses_module,
+            top + dialog_height - 3,
+            left + 2,
+            search_text,
+            left + dialog_width - 1,
+            theme["accent"] if search_focused or query else theme["muted"],
+        )
+        help_text = (
+            "type to filter  Enter accept  Esc clear"
+            if search_focused
+            else "j/k move  / search  Enter open  q/Esc close"
+        )
+        tui_write(
+            screen,
+            curses_module,
+            top + dialog_height - 2,
+            left + 2,
+            help_text,
+            left + dialog_width - 1,
+            theme["muted"],
+        )
+        screen.refresh()
+
+        try:
+            key = screen.get_wch()
+        except curses_module.error:
+            continue
+
+        if search_focused:
+            if key in {"\n", "\r", getattr(curses_module, "KEY_ENTER", -1)}:
+                search_focused = False
+            elif key == "\x1b":
+                query = ""
+                search_focused = False
+            elif key in {
+                "\x08",
+                "\x7f",
+                getattr(curses_module, "KEY_BACKSPACE", -1),
+            }:
+                query = query[:-1]
+                selected_row = 0
+                scroll_offset = 0
+            elif isinstance(key, str) and key.isprintable():
+                query += key
+                selected_row = 0
+                scroll_offset = 0
+            continue
+
+        if key in {"q", "Q", "\x1b"}:
+            return None
+        if key == "/":
+            search_focused = True
+        elif key in {"\n", "\r", getattr(curses_module, "KEY_ENTER", -1)}:
+            if rows and selected_row < len(rows):
+                selected_task = rows[selected_row][1]
+                if selected_task is not None:
+                    return selected_task.task_id
+        elif key in {curses_module.KEY_DOWN, "j"} and task_indices:
+            position = task_indices.index(selected_row)
+            selected_row = task_indices[min(position + 1, len(task_indices) - 1)]
+        elif key in {curses_module.KEY_UP, "k"} and task_indices:
+            position = task_indices.index(selected_row)
+            selected_row = task_indices[max(position - 1, 0)]
+
+
 def run_tui(screen, curses_module) -> int:
     """Run the full-screen keyboard interface."""
     data = load_todos()
@@ -1206,7 +1440,7 @@ def run_tui(screen, curses_module) -> int:
             )
         else:
             help_text = (
-                "TASKS  j/k move  Space select  x delete  Esc clear  "
+                "TASKS  j/k move  Space select / ff dates  x delete  Esc clear  "
                 "Ctrl+L preview  a add  n note  s start  d done  u undo  "
                 "/ search  q quit"
             )
@@ -1351,14 +1585,37 @@ def run_tui(screen, curses_module) -> int:
                 visual_anchor = None
             continue
 
-        if key == " " and tasks:
-            task_id = tasks[selected].task_id
-            if task_id in marked_ids:
-                marked_ids.remove(task_id)
-                message = f"Unmarked task {task_id}"
-            else:
-                marked_ids.add(task_id)
-                message = f"Marked task {task_id}"
+        if key == " ":
+            space_action = tui_space_action(screen, curses_module, theme)
+            if space_action == "all-dialog":
+                chosen_id = tui_all_tasks_dialog(
+                    screen, curses_module, data, theme
+                )
+                if chosen_id is not None:
+                    view = "all"
+                    query = ""
+                    focus = "tasks"
+                    all_tasks = tui_visible_tasks(data, view, query)
+                    selected = next(
+                        (
+                            index
+                            for index, task in enumerate(all_tasks)
+                            if task.task_id == chosen_id
+                        ),
+                        0,
+                    )
+                    scroll_offset = 0
+                    message = f"Opened task {chosen_id} from all tasks"
+                else:
+                    message = "All-tasks dialog closed"
+            elif space_action == "mark" and tasks:
+                task_id = tasks[selected].task_id
+                if task_id in marked_ids:
+                    marked_ids.remove(task_id)
+                    message = f"Unmarked task {task_id}"
+                else:
+                    marked_ids.add(task_id)
+                    message = f"Marked task {task_id}"
         elif key == "\x1b":
             if marked_ids:
                 marked_ids.clear()
