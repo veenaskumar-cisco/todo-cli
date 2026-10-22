@@ -564,12 +564,18 @@ def fuzzy_match(query: str, text: str) -> bool:
     return all(character in remaining for character in query.casefold())
 
 
-def tui_visible_tasks(data: TodoData, view: str, query: str) -> list[Task]:
+def tui_visible_tasks(
+    data: TodoData,
+    view: str,
+    query: str,
+    selected_date: date | None = None,
+) -> list[Task]:
     """Select tasks for a TUI view and optional fuzzy search."""
     if view == "all":
         tasks = list(data.tasks)
     else:
-        tasks = [task for task in data.tasks if task.created == date.today()]
+        view_date = selected_date if view == "date" else date.today()
+        tasks = [task for task in data.tasks if task.created == view_date]
         if view == "pending":
             tasks = [task for task in tasks if task.status == "pending"]
 
@@ -1206,6 +1212,7 @@ def run_tui(screen, curses_module) -> int:
     """Run the full-screen keyboard interface."""
     data = load_todos()
     view = "today"
+    selected_view_date = date.today()
     query = ""
     selected = 0
     scroll_offset = 0
@@ -1231,7 +1238,7 @@ def run_tui(screen, curses_module) -> int:
             pass
 
     while True:
-        tasks = tui_visible_tasks(data, view, query)
+        tasks = tui_visible_tasks(data, view, query, selected_view_date)
         if tasks:
             selected = min(selected, len(tasks) - 1)
         else:
@@ -1276,6 +1283,7 @@ def run_tui(screen, curses_module) -> int:
             "today": "TODAY",
             "pending": "PENDING",
             "all": "ALL",
+            "date": selected_view_date.isoformat(),
         }[view]
 
         pane_top = 0
@@ -1404,7 +1412,8 @@ def run_tui(screen, curses_module) -> int:
             preview_scroll,
         )
 
-        date_text = date.today().isoformat()
+        footer_date = selected_view_date if view == "date" else date.today()
+        date_text = footer_date.isoformat()
         status = message
         if marked_ids:
             status += f" | {len(marked_ids)} task(s) marked"
@@ -1592,20 +1601,29 @@ def run_tui(screen, curses_module) -> int:
                     screen, curses_module, data, theme
                 )
                 if chosen_id is not None:
-                    view = "all"
+                    chosen_task = find_task(data, chosen_id)
+                    if chosen_task is None:
+                        message = f"Task {chosen_id} no longer exists"
+                        continue
+                    selected_view_date = chosen_task.created
+                    view = "date"
                     query = ""
                     focus = "tasks"
-                    all_tasks = tui_visible_tasks(data, view, query)
+                    day_tasks = tui_visible_tasks(
+                        data, view, query, selected_view_date
+                    )
                     selected = next(
                         (
                             index
-                            for index, task in enumerate(all_tasks)
+                            for index, task in enumerate(day_tasks)
                             if task.task_id == chosen_id
                         ),
                         0,
                     )
                     scroll_offset = 0
-                    message = f"Opened task {chosen_id} from all tasks"
+                    message = (
+                        f"Showing tasks from {selected_view_date.isoformat()}"
+                    )
                 else:
                     message = "All-tasks dialog closed"
             elif space_action == "mark" and tasks:

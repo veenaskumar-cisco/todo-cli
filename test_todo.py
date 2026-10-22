@@ -185,6 +185,10 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(rows[1][1].task_id, 2)
         self.assertEqual(rows[2][1].task_id, 3)
         self.assertEqual(rows[3], (yesterday.isoformat(), None))
+        selected_day = todo.tui_visible_tasks(
+            data, "date", "", selected_date=yesterday
+        )
+        self.assertEqual([task.task_id for task in selected_day], [1])
 
         dialog_screen = LeaderScreen()
         dialog_screen.keys = iter(["\n"])
