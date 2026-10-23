@@ -63,7 +63,7 @@ variable to make that command permanent.
 ### Linux: install the `todo` command
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.16.1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/veenaskumar-cisco/todo-cli/v1.16.2/install.sh | sh
 ```
 
 The installer uses no `sudo`. It installs the command at
@@ -246,6 +246,8 @@ todo log 1
 ```
 
 When note text is omitted, the command prompts for it.
+Inside the TUI, note and task text use a horizontally scrolling editor, so
+input is not truncated at the terminal's visible width.
 
 Delete one or more tasks after an interactive confirmation:
 

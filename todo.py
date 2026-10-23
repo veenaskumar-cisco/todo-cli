@@ -1644,7 +1644,9 @@ def run_tui(screen, curses_module) -> int:
         elif key in {curses_module.KEY_UP, "k"}:
             selected = max(selected - 1, 0)
         elif key == "a":
-            description = tui_prompt(screen, curses_module, "New todo: ")
+            description = tui_edit_text(
+                screen, curses_module, "New todo: ", ""
+            )
             if description:
                 task = Task(data.next_id, "pending", date.today(), None, description)
                 data.tasks.append(task)
@@ -1682,7 +1684,12 @@ def run_tui(screen, curses_module) -> int:
                 message = f"Reopened task {task.task_id}"
         elif key == "n" and tasks:
             task = tasks[selected]
-            text = tui_prompt(screen, curses_module, f"Note for {task.task_id}: ")
+            text = tui_edit_text(
+                screen,
+                curses_module,
+                f"Note for {task.task_id}: ",
+                "",
+            )
             if text:
                 task.notes.append(TaskNote(datetime.now(), text))
                 save_todos(data)
@@ -1746,17 +1753,22 @@ def run_tui(screen, curses_module) -> int:
                 message = "Delete cancelled"
         elif key == "e" and tasks:
             task = tasks[selected]
-            description = tui_prompt(
+            description = tui_edit_text(
                 screen,
                 curses_module,
-                f"New description for {task.task_id} (blank cancels): ",
+                f"Edit task {task.task_id}: ",
+                task.description,
             )
-            if description:
+            if description is None:
+                message = "Edit cancelled"
+            elif not description:
+                message = "Description cannot be empty"
+            elif description != task.description:
                 task.description = description
                 save_todos(data)
                 message = f"Edited task {task.task_id}"
             else:
-                message = "Edit cancelled"
+                message = "Task unchanged"
         elif key == "/":
             focus = "search"
             message = "Search focused; type to filter"

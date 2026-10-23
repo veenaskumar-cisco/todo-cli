@@ -208,6 +208,11 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(selected_id, 2)
 
     def test_tui_renders_and_quits(self) -> None:
+        long_note = (
+            "I learned about the basics of user space and kernel space, "
+            "including how system calls cross the boundary between them."
+        )
+
         class FakeCurses:
             A_BOLD = 1
             A_REVERSE = 2
@@ -239,6 +244,8 @@ class TodoCliTests(unittest.TestCase):
                         "u",
                         "s",
                         "n",
+                        *long_note,
+                        "\n",
                         "y",
                         "\x0c",
                         "j",
@@ -275,7 +282,7 @@ class TodoCliTests(unittest.TestCase):
                     ]
                 )
                 self.responses = iter(
-                    [b"Follow-up note", b"n", b"yes"]
+                    [b"n", b"yes"]
                 )
 
             def getmaxyx(self) -> tuple[int, int]:
@@ -328,12 +335,12 @@ class TodoCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(task.status, "in-progress")
         self.assertIsNone(task.completed)
-        self.assertEqual(task.notes[0].text, "Follow-up note updated")
+        self.assertEqual(task.notes[0].text, long_note + " updated")
         self.assertEqual(save_todos.call_count, 5)
         self.assertEqual(data.tasks, [])
         self.assertEqual(copy_to_clipboard.call_count, 2)
         copied_note = copy_to_clipboard.call_args_list[0].args[0]
-        self.assertTrue(copied_note.endswith("Follow-up note"))
+        self.assertTrue(copied_note.endswith(long_note))
         visual_copy = copy_to_clipboard.call_args_list[1].args[0]
         self.assertIn("Status", visual_copy)
         self.assertIn("Created", visual_copy)
